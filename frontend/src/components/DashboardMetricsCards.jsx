@@ -78,14 +78,14 @@ export default function DashboardMetricsCards() {
         return (
           <div
             key={index}
-            className="bg-zinc-800/30 border border-zinc-800/80 hover:border-zinc-700/60 rounded-xl p-5 hover:shadow-md transition-all group duration-300"
+            className="bg-zinc-800/20 border border-zinc-800/80 hover:border-zinc-600/85 hover:bg-zinc-800/50 hover:-translate-y-1 rounded-xl p-5 shadow-sm hover:shadow-lg hover:shadow-white/[0.02] transition-all group duration-300 cursor-pointer"
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <p className="text-zinc-400 text-sm font-medium mb-2">{card.title}</p>
                 <p className="text-3xl font-bold text-white">{card.value}</p>
               </div>
-              <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex items-center justify-center transition-colors group-hover:border-white/20">
+              <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:bg-white/10 group-hover:border-white/35 group-hover:scale-[1.03]">
                 <Icon size={20} className="text-zinc-300 group-hover:text-white transition-colors" />
               </div>
             </div>

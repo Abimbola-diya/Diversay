@@ -29,6 +29,21 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
 
   return (
     <>
+      {/* Inline styles for the uniform electron border drawing animation with normalized pathLength */}
+      <style>{`
+        @keyframes border-draw {
+          from {
+            stroke-dashoffset: 100;
+          }
+          to {
+            stroke-dashoffset: 0;
+          }
+        }
+        .animate-border-draw {
+          animation: border-draw 8s linear infinite;
+        }
+      `}</style>
+
       {/* Sidebar container */}
       <div
         className={`fixed left-0 top-[105px] h-[calc(100vh-105px)] bg-zinc-900 transition-all duration-300 z-40 flex flex-col justify-between md:sticky md:top-[105px]
@@ -39,12 +54,44 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
           <div className="relative group">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm
+              className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
                 ${isOpen ? 'px-3 py-2.5 gap-2.5 justify-start' : 'p-2.5 justify-center'}
-                text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40`}
+                text-zinc-400 hover:text-zinc-200`}
             >
-              <Columns size={iconSize} className="text-zinc-400 group-hover:text-zinc-200" />
-              {isOpen && <span className="truncate">Collapse</span>}
+              {/* Electron border glow on hover */}
+              <div className="absolute inset-0 rounded-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0">
+                <svg className="absolute inset-0 w-full h-full rounded-xl" overflow="visible">
+                  <rect
+                    x="0"
+                    y="0"
+                    width="100%"
+                    height="100%"
+                    rx="12"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="2"
+                    pathLength="100"
+                    strokeDasharray="30 70"
+                    className="blur-[2px] opacity-30 animate-border-draw"
+                  />
+                  <rect
+                    x="0"
+                    y="0"
+                    width="100%"
+                    height="100%"
+                    rx="12"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="1.2"
+                    pathLength="100"
+                    strokeDasharray="30 70"
+                    className="opacity-100 animate-border-draw"
+                  />
+                </svg>
+              </div>
+
+              <Columns size={iconSize} className="text-zinc-400 group-hover:text-zinc-200 z-10" />
+              {isOpen && <span className="truncate z-10">Collapse</span>}
             </button>
 
             {/* Tooltip for collapsed state */}
@@ -67,24 +114,59 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                         navigate(item.path)
                         if (window.innerWidth < 768) setIsOpen(false)
                       }}
-                      className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative
+                      className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
                         ${isOpen ? 'px-3 pt-2.5 pb-3.5 gap-2.5 justify-start' : 'pt-2.5 pb-3.5 px-2.5 justify-center'}
-                        ${isActive
-                          ? 'bg-white/5 text-white'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}`}
+                        ${isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                     >
-                      <item.icon size={iconSize} className={isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'} />
-                      {isOpen && <span className="truncate">{item.label}</span>}
+                      {/* Electron border glow on hover */}
+                      <div className="absolute inset-0 rounded-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0">
+                        <svg className="absolute inset-0 w-full h-full rounded-xl" overflow="visible">
+                          <rect
+                            x="0"
+                            y="0"
+                            width="100%"
+                            height="100%"
+                            rx="12"
+                            fill="none"
+                            stroke="#ffffff"
+                            strokeWidth="2"
+                            pathLength="100"
+                            strokeDasharray="30 70"
+                            className="blur-[2px] opacity-30 animate-border-draw"
+                          />
+                          <rect
+                            x="0"
+                            y="0"
+                            width="100%"
+                            height="100%"
+                            rx="12"
+                            fill="none"
+                            stroke="#ffffff"
+                            strokeWidth="1.2"
+                            pathLength="100"
+                            strokeDasharray="30 70"
+                            className="opacity-100 animate-border-draw"
+                          />
+                        </svg>
+                      </div>
+
+                      {/* Subtle background highlight for active state when NOT hovered */}
+                      {isActive && (
+                        <div className="absolute inset-0 bg-white/5 rounded-xl -z-10 pointer-events-none" />
+                      )}
+
+                      <item.icon size={iconSize} className={`${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'} z-10`} />
+                      {isOpen && <span className="truncate z-10">{item.label}</span>}
 
                       {/* Wobbly Underline for active state */}
                       {isActive && (
                         <svg
-                          className={`absolute bottom-1 left-1/2 -translate-x-1/2 h-[6px] text-white pointer-events-none select-none transition-all duration-300 ${isOpen ? 'w-[70%]' : 'w-7'}`}
-                          viewBox="0 0 100 10"
+                          className={`absolute bottom-[3px] left-1/2 -translate-x-1/2 h-[8px] text-white pointer-events-none select-none transition-all duration-300 z-20 ${isOpen ? 'w-[70%]' : 'w-7'}`}
+                          viewBox="0 0 100 16"
                           preserveAspectRatio="none"
                         >
                           <path
-                            d="M3,7 Q25,2 50,8 T97,5"
+                            d="M3,9 Q25,3 50,11 T97,7"
                             stroke="currentColor"
                             strokeWidth="3.5"
                             fill="none"
@@ -156,12 +238,44 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                     alert(res.error || "Failed to submit request.");
                   }
                 }}
-                className={`w-full flex items-center justify-center p-2.5 rounded-xl transition-all duration-200 font-medium
+                className={`w-full flex items-center justify-center p-2.5 rounded-xl transition-all duration-200 font-medium relative z-10
                   ${user.requesting_admin 
-                    ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' 
-                    : 'text-zinc-500 hover:text-cyan-400 hover:bg-zinc-800/40'}`}
+                    ? 'text-amber-400' 
+                    : 'text-zinc-500 hover:text-cyan-400'}`}
               >
-                <ShieldAlert size={18} className={user.requesting_admin ? 'animate-pulse' : ''} />
+                {/* Electron border glow on hover */}
+                <div className="absolute inset-0 rounded-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0">
+                  <svg className="absolute inset-0 w-full h-full rounded-xl" overflow="visible">
+                    <rect
+                      x="0"
+                      y="0"
+                      width="100%"
+                      height="100%"
+                      rx="12"
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth="2"
+                      pathLength="100"
+                      strokeDasharray="30 70"
+                      className="blur-[2px] opacity-30 animate-border-draw"
+                    />
+                    <rect
+                      x="0"
+                      y="0"
+                      width="100%"
+                      height="100%"
+                      rx="12"
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth="1.2"
+                      pathLength="100"
+                      strokeDasharray="30 70"
+                      className="opacity-100 animate-border-draw"
+                    />
+                  </svg>
+                </div>
+
+                <ShieldAlert size={18} className={`${user.requesting_admin ? 'animate-pulse' : ''} z-10`} />
               </button>
 
               {/* Tooltip */}
@@ -176,12 +290,44 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
             <div className="relative group">
               <button
                 onClick={handleLogout}
-                className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm
+                className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
                   ${isOpen ? 'px-3 py-2.5 gap-2.5 justify-start' : 'p-2.5 justify-center'}
-                  text-zinc-400 hover:text-red-400 hover:bg-red-950/15`}
+                  text-zinc-400 hover:text-red-400`}
               >
-                <LogOut size={iconSize} />
-                {isOpen && <span>Logout</span>}
+                {/* Electron border glow on hover (red tinted for logout!) */}
+                <div className="absolute inset-0 rounded-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0">
+                  <svg className="absolute inset-0 w-full h-full rounded-xl" overflow="visible">
+                    <rect
+                      x="0"
+                      y="0"
+                      width="100%"
+                      height="100%"
+                      rx="12"
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="2"
+                      pathLength="100"
+                      strokeDasharray="30 70"
+                      className="blur-[2px] opacity-30 animate-border-draw"
+                    />
+                    <rect
+                      x="0"
+                      y="0"
+                      width="100%"
+                      height="100%"
+                      rx="12"
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="1.2"
+                      pathLength="100"
+                      strokeDasharray="30 70"
+                      className="opacity-100 animate-border-draw"
+                    />
+                  </svg>
+                </div>
+
+                <LogOut size={iconSize} className="z-10" />
+                {isOpen && <span className="z-10">Logout</span>}
               </button>
 
               {/* Tooltip for collapsed state */}

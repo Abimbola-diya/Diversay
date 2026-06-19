@@ -124,6 +124,21 @@ export default function OrdersTable() {
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+      {/* Inline styles for the uniform electron border drawing animation */}
+      <style>{`
+        @keyframes border-draw {
+          from {
+            stroke-dashoffset: 100%;
+          }
+          to {
+            stroke-dashoffset: 0%;
+          }
+        }
+        .animate-border-draw {
+          animation: border-draw 8s linear infinite;
+        }
+      `}</style>
+
       {/* Header with Filters */}
       <div className="p-6 border-b border-zinc-800">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
@@ -136,8 +151,40 @@ export default function OrdersTable() {
         {/* Search and Filters */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Search by Order Number */}
-          <div className="relative">
-            <Search size={18} className="absolute left-3 top-3 text-zinc-500" />
+          <div className="relative group rounded-lg bg-zinc-800 border border-zinc-700 transition-all focus-within:border-transparent">
+            {/* Electron border glow on focus-within */}
+            <div className="absolute inset-0 rounded-lg pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 z-0">
+              <svg className="absolute inset-0 w-full h-full rounded-lg" overflow="visible">
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="blur-[2px] opacity-30 animate-border-draw"
+                />
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="1.2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="opacity-100 animate-border-draw"
+                />
+              </svg>
+            </div>
+
+            <Search size={18} className="absolute left-3 top-3 text-zinc-500 z-10" />
             <input
               type="text"
               placeholder="Search order #..."
@@ -146,31 +193,96 @@ export default function OrdersTable() {
                 setSearchTerm(e.target.value)
                 setPage(0)
               }}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2 bg-transparent text-zinc-100 placeholder-zinc-500 focus:outline-none z-10 relative"
             />
           </div>
 
           {/* Filter by Date Range */}
-          <div className="relative">
-            <Calendar size={18} className="absolute left-3 top-3 text-zinc-500" />
+          <div className="relative group rounded-lg bg-zinc-800 border border-zinc-700 transition-all focus-within:border-transparent">
+            {/* Electron border glow on focus-within */}
+            <div className="absolute inset-0 rounded-lg pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 z-0">
+              <svg className="absolute inset-0 w-full h-full rounded-lg" overflow="visible">
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="blur-[2px] opacity-30 animate-border-draw"
+                />
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="1.2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="opacity-100 animate-border-draw"
+                />
+              </svg>
+            </div>
+
+            <Calendar size={18} className="absolute left-3 top-3 text-zinc-500 z-10 pointer-events-none" />
             <select
               value={dateRange}
               onChange={(e) => {
                 setDateRange(e.target.value)
                 setPage(0)
               }}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-cyan-500 appearance-none transition-colors"
+              className="w-full pl-10 pr-10 py-2 bg-transparent text-zinc-100 focus:outline-none appearance-none transition-colors z-10 relative cursor-pointer"
             >
-              <option value="30days">Last 30 days</option>
-              <option value="7days">Last 7 days</option>
-              <option value="today">Today</option>
-              <option value="all">All time</option>
+              <option value="30days" className="bg-zinc-800 text-zinc-100">Last 30 days</option>
+              <option value="7days" className="bg-zinc-800 text-zinc-100">Last 7 days</option>
+              <option value="today" className="bg-zinc-800 text-zinc-100">Today</option>
+              <option value="all" className="bg-zinc-800 text-zinc-100">All time</option>
             </select>
+            <ChevronDown size={16} className="absolute right-3 top-3 text-zinc-500 pointer-events-none z-10" />
           </div>
 
           {/* Filter by State */}
-          <div className="relative">
-            <Filter size={18} className="absolute left-3 top-3 text-zinc-500" />
+          <div className="relative group rounded-lg bg-zinc-800 border border-zinc-700 transition-all focus-within:border-transparent">
+            {/* Electron border glow on focus-within */}
+            <div className="absolute inset-0 rounded-lg pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 z-0">
+              <svg className="absolute inset-0 w-full h-full rounded-lg" overflow="visible">
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="blur-[2px] opacity-30 animate-border-draw"
+                />
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="1.2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="opacity-100 animate-border-draw"
+                />
+              </svg>
+            </div>
+
+            <Filter size={18} className="absolute left-3 top-3 text-zinc-500 z-10" />
             <input
               type="text"
               placeholder="Filter by state..."
@@ -179,28 +291,61 @@ export default function OrdersTable() {
                 setFilterState(e.target.value)
                 setPage(0)
               }}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2 bg-transparent text-zinc-100 placeholder-zinc-500 focus:outline-none z-10 relative"
             />
           </div>
 
           {/* Filter by Status */}
-          <div className="relative">
-            <Filter size={18} className="absolute left-3 top-3 text-zinc-500" />
+          <div className="relative group rounded-lg bg-zinc-800 border border-zinc-700 transition-all focus-within:border-transparent">
+            {/* Electron border glow on focus-within */}
+            <div className="absolute inset-0 rounded-lg pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 z-0">
+              <svg className="absolute inset-0 w-full h-full rounded-lg" overflow="visible">
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="blur-[2px] opacity-30 animate-border-draw"
+                />
+                <rect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  rx="8"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="1.2"
+                  pathLength="100"
+                  strokeDasharray="30 70"
+                  className="opacity-100 animate-border-draw"
+                />
+              </svg>
+            </div>
+
+            <Filter size={18} className="absolute left-3 top-3 text-zinc-500 z-10 pointer-events-none" />
             <select
               value={filterStatus}
               onChange={(e) => {
                 setFilterStatus(e.target.value)
                 setPage(0)
               }}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-cyan-500 appearance-none transition-colors"
+              className="w-full pl-10 pr-10 py-2 bg-transparent text-zinc-100 focus:outline-none appearance-none transition-colors z-10 relative cursor-pointer"
             >
-              <option value="">All statuses</option>
-              <option value="Draft">Draft</option>
-              <option value="In Transit">In Transit</option>
-              <option value="Delayed">Delayed</option>
-              <option value="Delivered (On Time)">Delivered (On Time)</option>
-              <option value="Delivered (Late)">Delivered (Late)</option>
+              <option value="" className="bg-zinc-800 text-zinc-100">All statuses</option>
+              <option value="Draft" className="bg-zinc-800 text-zinc-100">Draft</option>
+              <option value="In Transit" className="bg-zinc-800 text-zinc-100">In Transit</option>
+              <option value="Delayed" className="bg-zinc-800 text-zinc-100">Delayed</option>
+              <option value="Delivered (On Time)" className="bg-zinc-800 text-zinc-100">Delivered (On Time)</option>
+              <option value="Delivered (Late)" className="bg-zinc-800 text-zinc-100">Delivered (Late)</option>
             </select>
+            <ChevronDown size={16} className="absolute right-3 top-3 text-zinc-500 pointer-events-none z-10" />
           </div>
         </div>
       </div>

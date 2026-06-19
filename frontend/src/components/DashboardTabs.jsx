@@ -118,7 +118,7 @@ export default function DashboardTabs() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-white group-hover:text-cyan-400 transition-colors">
+                        <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">
                           {notif.title}
                         </h4>
                         {notif.priority === 'high' && (
@@ -256,7 +256,7 @@ export default function DashboardTabs() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id
-                  ? 'border-cyan-500 text-cyan-400'
+                  ? 'border-white text-white'
                   : 'border-transparent text-zinc-400 hover:text-white'
                 }`}
             >
