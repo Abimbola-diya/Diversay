@@ -13,7 +13,7 @@ const MORNING_QUIPS = [
 const AFTERNOON_QUIPS = [
   "not yet tired, are you? 💪",
   "still keeping the wheels turning! 🚛",
-  "halfway through — you've got this! 🔥",
+  "halfway through, you've got this! 🔥",
   "lunch break's over, let's go! 🍔",
   "the afternoon hustle is real! ⚡",
 ]
@@ -61,12 +61,12 @@ function getGreetingData() {
 }
 
 // ── Timing constants (ms) ─────────────────────────────────────────────────
-const GLOW_WARMUP       = 600     // glow edges warm up
-const TYPE_DELAY        = GLOW_WARMUP + 200
-const TYPE_SPEED        = 48      // ms per character
-const PAUSE_AFTER_TYPE  = 1800    // hold the full text
-const SHRINK_DURATION   = 900     // CSS transition length for shrink
-const FADE_OUT_DELAY    = 400     // after shrink, fade overlay out
+const GLOW_WARMUP = 600     // glow edges warm up
+const TYPE_DELAY = GLOW_WARMUP + 200
+const TYPE_SPEED = 48      // ms per character
+const PAUSE_AFTER_TYPE = 1800    // hold the full text
+const SHRINK_DURATION = 900     // CSS transition length for shrink
+const FADE_OUT_DELAY = 400     // after shrink, fade overlay out
 
 // ── Component ──────────────────────────────────────────────────────────────
 export default function DashboardWelcome({ userName, onComplete }) {
@@ -167,54 +167,50 @@ export default function DashboardWelcome({ userName, onComplete }) {
           position: absolute;
           top: 50%;
           left: 50%;
-          width: 200vmax;
-          height: 200vmax;
+          width: 220vmax;
+          height: 220vmax;
           transform: translate(-50%, -50%);
           background: conic-gradient(
+            from 0deg,
             #ef4444 0%,
-            #fbbf24 15%,
-            #10b981 30%,
-            #3b82f6 45%,
-            #8b5cf6 60%,
-            #ec4899 75%,
-            #ef4444 100%
+            #fbbf24 4%,
+            #10b981 8%,
+            #3b82f6 12%,
+            transparent 15%,
+            transparent 100%
           );
-          animation: fastRotate 1.2s linear infinite;
+          animation: fastRotate 1.4s linear infinite;
         }
         @keyframes fastRotate {
           from { transform: translate(-50%, -50%) rotate(0deg); }
           to { transform: translate(-50%, -50%) rotate(360deg); }
         }
 
-        /* ── Blue Neon Glow Corners (Strictly restricted to corners) ── */
-        .blue-glow-corners {
+        /* ── Blue Neon Glow Thin Line Border (Fades in after 2 seconds) ── */
+        .blue-border-container {
           position: absolute;
           inset: 0;
           pointer-events: none;
           z-index: 2;
           opacity: 0;
-          transition: opacity 1s ease-in-out;
+          transition: opacity 1.0s ease-in-out;
+          border: 3.5px solid rgba(59, 130, 246, 0.65);
+          box-shadow: inset 0 0 32px rgba(59, 130, 246, 0.5), 0 0 32px rgba(59, 130, 246, 0.5);
+          animation: neonPulse 4s ease-in-out infinite;
         }
-        .blue-glow-corners.active {
+        .blue-border-container.active {
           opacity: 1;
         }
-        @keyframes pulseCorner {
-          0%, 100% { transform: scale(1); opacity: 0.7; }
-          50% { transform: scale(1.1); opacity: 0.95; }
+        @keyframes neonPulse {
+          0%, 100% {
+            border-color: rgba(59, 130, 246, 0.55);
+            box-shadow: inset 0 0 24px rgba(59, 130, 246, 0.4), 0 0 24px rgba(59, 130, 246, 0.4);
+          }
+          50% {
+            border-color: rgba(59, 130, 246, 0.75);
+            box-shadow: inset 0 0 45px rgba(59, 130, 246, 0.65), 0 0 45px rgba(59, 130, 246, 0.65);
+          }
         }
-        .blue-corner-spot {
-          position: absolute;
-          width: 160px;
-          height: 160px;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(37, 99, 235, 0.45) 0%, rgba(37, 99, 235, 0.1) 45%, transparent 70%);
-          filter: blur(12px);
-          animation: pulseCorner 4s ease-in-out infinite;
-        }
-        .blue-corner-tl { top: -45px; left: -45px; animation-delay: 0s; }
-        .blue-corner-tr { top: -45px; right: -45px; animation-delay: 1s; }
-        .blue-corner-bl { bottom: -45px; left: -45px; animation-delay: 2s; }
-        .blue-corner-br { bottom: -45px; right: -45px; animation-delay: 3s; }
       `}</style>
 
       {/* ── Multi-color Fast Electron Border (First 2 seconds) ── */}
@@ -224,13 +220,8 @@ export default function DashboardWelcome({ userName, onComplete }) {
         </div>
       </div>
 
-      {/* ── Soft Blue Neon Corners (Fades in after 2 seconds) ── */}
-      <div className={`blue-glow-corners ${showBlueGlow ? 'active' : ''}`}>
-        <div className="blue-corner-spot blue-corner-tl" />
-        <div className="blue-corner-spot blue-corner-tr" />
-        <div className="blue-corner-spot blue-corner-bl" />
-        <div className="blue-corner-spot blue-corner-br" />
-      </div>
+      {/* ── Soft Blue Neon Line Border (Fades in after 2 seconds) ── */}
+      <div className={`blue-border-container ${showBlueGlow ? 'active' : ''}`} />
 
       {/* ── Greeting text ── */}
       <div
@@ -240,7 +231,7 @@ export default function DashboardWelcome({ userName, onComplete }) {
           alignItems: 'center',
           justifyContent: isShrunk ? 'flex-start' : 'center',
           // Center → top-left corner transition
-          top:  isShrunk ? '28px' : '50%',
+          top: isShrunk ? '28px' : '50%',
           left: isShrunk ? '88px' : '50%',
           transform: isShrunk
             ? 'translate(0, 0)'
