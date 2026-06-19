@@ -64,7 +64,7 @@ function getGreetingData() {
 const GLOW_WARMUP = 600     // glow edges warm up
 const TYPE_DELAY = GLOW_WARMUP + 200
 const TYPE_SPEED = 48      // ms per character
-const PAUSE_AFTER_TYPE = 1800    // hold the full text
+const PAUSE_AFTER_TYPE = 3500    // hold the full text
 const SHRINK_DURATION = 900     // CSS transition length for shrink
 const FADE_OUT_DELAY = 400     // after shrink, fade overlay out
 
@@ -93,8 +93,8 @@ export default function DashboardWelcome({ userName, onComplete }) {
   // ── Main animation sequencer ────────────────────────────────────────────
   useEffect(() => {
     const timers = []
-    // 0. Transition from multi-color electron glow to blue glow after 3.5 seconds
-    timers.push(setTimeout(() => setShowBlueGlow(true), 3500))
+    // 0. Transition from multi-color electron glow to blue glow after 5 seconds
+    timers.push(setTimeout(() => setShowBlueGlow(true), 5000))
 
     // 1. After glow warmup → start typing
     timers.push(setTimeout(() => setPhase('typing'), TYPE_DELAY))
