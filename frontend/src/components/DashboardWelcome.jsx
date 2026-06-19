@@ -173,13 +173,13 @@ export default function DashboardWelcome({ userName, onComplete }) {
           background: conic-gradient(
             from 0deg,
             #ef4444 0%,
-            #fbbf24 4%,
-            #10b981 8%,
-            #3b82f6 12%,
-            transparent 15%,
+            #fbbf24 8%,
+            #10b981 16%,
+            #3b82f6 24%,
+            transparent 30%,
             transparent 100%
           );
-          animation: fastRotate 1.4s linear infinite;
+          animation: fastRotate 2.0s linear infinite;
         }
         @keyframes fastRotate {
           from { transform: translate(-50%, -50%) rotate(0deg); }
