@@ -184,11 +184,11 @@ export default function LoginPage() {
         if (result.error?.includes('pending admin approval')) {
           navigate('/pending-approval', { state: { email } })
         } else {
-          setError(result.error || 'Login failed')
+          setError(result.error || 'Invalid email or password')
         }
       }
     } catch (err) {
-      setError('An error occurred. Please try again.')
+      setError('Invalid email or password')
     } finally {
       setIsLoading(false)
     }

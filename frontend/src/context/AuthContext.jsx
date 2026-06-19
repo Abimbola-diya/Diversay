@@ -48,7 +48,7 @@ export function AuthProvider({ children }) {
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
       return { success: true, user: userData }
     } catch (error) {
-      return { success: false, error: error.response?.data?.detail || 'Login failed' }
+      return { success: false, error: error.response?.data?.detail || 'Invalid email or password' }
     }
   }
 
