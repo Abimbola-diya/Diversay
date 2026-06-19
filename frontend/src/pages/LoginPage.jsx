@@ -60,6 +60,9 @@ export default function LoginPage() {
 
   // Wave animation effect: Group 0 -> Group 1 -> Group 2 -> Group 1 -> repeat
   useEffect(() => {
+    if (showSplash) {
+      setSearchParams({})
+    }
     const sequence = [0, 1, 2, 1]
     let stepIndex = 0
 
