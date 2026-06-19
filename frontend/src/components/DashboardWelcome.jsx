@@ -74,6 +74,7 @@ export default function DashboardWelcome({ userName, onComplete }) {
   const [displayedText, setDisplayedText] = useState('')
   const [cursorVisible, setCursorVisible] = useState(true)
   const [overlayFading, setOverlayFading] = useState(false)
+  const [showBlueGlow, setShowBlueGlow] = useState(false)
 
   const greetingRef = useRef(getGreetingData())
   const completeRef = useRef(onComplete)
@@ -81,7 +82,7 @@ export default function DashboardWelcome({ userName, onComplete }) {
 
   const firstName = userName?.split(' ')[0] || 'Admin'
   const { greeting, quip } = greetingRef.current
-  const fullText = `${greeting}, ${firstName} — ${quip}`
+  const fullText = `${greeting}, ${firstName}, ${quip}`
 
   // ── Cursor blink ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -92,6 +93,8 @@ export default function DashboardWelcome({ userName, onComplete }) {
   // ── Main animation sequencer ────────────────────────────────────────────
   useEffect(() => {
     const timers = []
+    // 0. Transition from multi-color electron glow to blue glow after 2 seconds
+    timers.push(setTimeout(() => setShowBlueGlow(true), 2000))
 
     // 1. After glow warmup → start typing
     timers.push(setTimeout(() => setPhase('typing'), TYPE_DELAY))
@@ -130,7 +133,7 @@ export default function DashboardWelcome({ userName, onComplete }) {
         position: 'fixed',
         inset: 0,
         zIndex: 9998,
-        backgroundColor: '#0a0a0f',
+        backgroundColor: '#18181b', // Exact blackish of the signup/login page
         opacity: overlayFading ? 0 : 1,
         transition: `opacity ${FADE_OUT_DELAY}ms ease-out`,
         pointerEvents: overlayFading ? 'none' : 'auto',
@@ -138,90 +141,96 @@ export default function DashboardWelcome({ userName, onComplete }) {
     >
       {/* ── Inline styles ── */}
       <style>{`
-        @keyframes geminiShift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @keyframes pulseGlow {
-          0%, 100% { opacity: 0.45; }
-          50% { opacity: 0.75; }
-        }
-        .gemini-border-container {
+        /* ── Fast Electron Multi-color Border ── */
+        .electron-border-container {
           position: absolute;
           inset: 0;
           pointer-events: none;
-          z-index: 1;
+          z-index: 3;
+          opacity: 1;
+          transition: opacity 0.8s ease-in-out;
         }
-        .gemini-glow-border {
+        .electron-border-container.inactive {
+          opacity: 0;
+        }
+        .electron-glow-border {
           position: absolute;
           inset: 0;
           padding: 3.5px; /* thin 3.5px ribbon of light */
-          background: linear-gradient(
-            270deg,
-            #3b82f6, /* twilight blue */
-            #8b5cf6, /* royal purple */
-            #ec4899, /* pink */
-            #fbbf24, /* warm yellow */
-            #10b981, /* emerald green */
-            #ef4444, /* bright red */
-            #3b82f6
-          );
-          background-size: 300% 300%;
-          animation: geminiShift 8s ease-in-out infinite;
           -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
           -webkit-mask-composite: xor;
           mask-composite: exclude;
+          overflow: hidden;
         }
-        .gemini-glow-blur {
+        /* Rotating child to move colors extremely fast along borders */
+        .electron-rotator {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 200vmax;
+          height: 200vmax;
+          transform: translate(-50%, -50%);
+          background: conic-gradient(
+            #ef4444 0%,
+            #fbbf24 15%,
+            #10b981 30%,
+            #3b82f6 45%,
+            #8b5cf6 60%,
+            #ec4899 75%,
+            #ef4444 100%
+          );
+          animation: fastRotate 1.2s linear infinite;
+        }
+        @keyframes fastRotate {
+          from { transform: translate(-50%, -50%) rotate(0deg); }
+          to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        /* ── Blue Neon Glow Corners (Strictly restricted to corners) ── */
+        .blue-glow-corners {
           position: absolute;
           inset: 0;
-          padding: 3.5px;
-          background: linear-gradient(
-            270deg,
-            #3b82f6,
-            #8b5cf6,
-            #ec4899,
-            #fbbf24,
-            #10b981,
-            #ef4444,
-            #3b82f6
-          );
-          background-size: 300% 300%;
-          animation: geminiShift 8s ease-in-out infinite, pulseGlow 4s ease-in-out infinite;
-          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          -webkit-mask-composite: xor;
-          mask-composite: exclude;
-          filter: blur(10px);
-          transform: scale(1.005);
+          pointer-events: none;
+          z-index: 2;
+          opacity: 0;
+          transition: opacity 1s ease-in-out;
         }
-        /* Ambient background glow */
-        @keyframes glowPulseSlow {
-          0%, 100% { opacity: 0.15; }
-          50% { opacity: 0.35; }
+        .blue-glow-corners.active {
+          opacity: 1;
         }
-        .dw-ambient {
-          position: absolute; border-radius: 50%; filter: blur(100px); pointer-events: none;
-          animation: glowPulseSlow 6s ease-in-out infinite;
+        @keyframes pulseCorner {
+          0%, 100% { transform: scale(1); opacity: 0.7; }
+          50% { transform: scale(1.1); opacity: 0.95; }
         }
+        .blue-corner-spot {
+          position: absolute;
+          width: 160px;
+          height: 160px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(37, 99, 235, 0.45) 0%, rgba(37, 99, 235, 0.1) 45%, transparent 70%);
+          filter: blur(12px);
+          animation: pulseCorner 4s ease-in-out infinite;
+        }
+        .blue-corner-tl { top: -45px; left: -45px; animation-delay: 0s; }
+        .blue-corner-tr { top: -45px; right: -45px; animation-delay: 1s; }
+        .blue-corner-bl { bottom: -45px; left: -45px; animation-delay: 2s; }
+        .blue-corner-br { bottom: -45px; right: -45px; animation-delay: 3s; }
       `}</style>
 
-      {/* ── Google Gemini Edge Glow ── */}
-      <div className="gemini-border-container">
-        <div className="gemini-glow-border" />
-        <div className="gemini-glow-blur" />
+      {/* ── Multi-color Fast Electron Border (First 2 seconds) ── */}
+      <div className={`electron-border-container ${showBlueGlow ? 'inactive' : ''}`}>
+        <div className="electron-glow-border">
+          <div className="electron-rotator" />
+        </div>
       </div>
 
-      {/* ── Ambient background glow ── */}
-      <div className="dw-ambient" style={{
-        top: '20%', left: '10%', width: 300, height: 300,
-        background: 'radial-gradient(circle, rgba(59,130,246,0.1), transparent 70%)',
-      }} />
-      <div className="dw-ambient" style={{
-        bottom: '15%', right: '8%', width: 350, height: 350,
-        background: 'radial-gradient(circle, rgba(139,92,246,0.08), transparent 70%)',
-        animationDelay: '2s',
-      }} />
+      {/* ── Soft Blue Neon Corners (Fades in after 2 seconds) ── */}
+      <div className={`blue-glow-corners ${showBlueGlow ? 'active' : ''}`}>
+        <div className="blue-corner-spot blue-corner-tl" />
+        <div className="blue-corner-spot blue-corner-tr" />
+        <div className="blue-corner-spot blue-corner-bl" />
+        <div className="blue-corner-spot blue-corner-br" />
+      </div>
 
       {/* ── Greeting text ── */}
       <div
@@ -244,17 +253,16 @@ export default function DashboardWelcome({ userName, onComplete }) {
       >
         <h1
           style={{
-            fontFamily: '"Inter", "Segoe UI", system-ui, sans-serif',
+            fontFamily: '"Playfair Display", Georgia, serif',
+            fontStyle: 'italic',
             fontSize: isShrunk ? '1.35rem' : 'clamp(1.8rem, 4vw, 3.2rem)',
-            fontWeight: isShrunk ? 600 : 700,
+            fontWeight: 700,
             color: '#ffffff',
-            letterSpacing: '-0.02em',
-            lineHeight: 1.3,
+            letterSpacing: '-0.01em',
+            lineHeight: 1.35,
             textAlign: isShrunk ? 'left' : 'center',
             transition: `all ${SHRINK_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-            textShadow: isShrunk
-              ? 'none'
-              : '0 0 40px rgba(59,130,246,0.3), 0 0 80px rgba(6,182,212,0.15)',
+            textShadow: 'none', // No blue glow on the writing
           }}
         >
           {displayedText}
@@ -265,12 +273,11 @@ export default function DashboardWelcome({ userName, onComplete }) {
                 display: 'inline-block',
                 width: '3px',
                 height: '1em',
-                backgroundColor: '#3b82f6',
-                marginLeft: '4px',
+                backgroundColor: '#ffffff', // Normal white cursor
+                marginLeft: '6px',
                 verticalAlign: 'text-bottom',
                 opacity: cursorVisible ? 1 : 0,
                 transition: 'opacity 0.1s',
-                boxShadow: '0 0 8px rgba(59,130,246,0.6)',
               }}
             />
           )}
