@@ -1,12 +1,16 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { Menu, X, LayoutDashboard, Package, Users, BarChart3, LogOut, CheckSquare } from 'lucide-react'
+import { LayoutDashboard, Package, Users, BarChart3, LogOut, CheckSquare, ShieldAlert, Columns } from 'lucide-react'
 
-export default function Sidebar() {
-  const [isOpen, setIsOpen] = useState(true)
+export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }) {
+  const [localIsOpen, setLocalIsOpen] = useState(false)
+  const isOpen = propIsOpen !== undefined ? propIsOpen : localIsOpen
+  const setIsOpen = propSetIsOpen !== undefined ? propSetIsOpen : setLocalIsOpen
+
   const { logout, user, requestAdmin } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const handleLogout = async () => {
     await logout()
@@ -21,62 +25,130 @@ export default function Sidebar() {
     user?.role === 'admin' && { label: 'Approvals', icon: CheckSquare, path: '/admin/approvals' }
   ].filter(Boolean)
 
+  const iconSize = isOpen ? 18 : 22
+
   return (
     <>
-      {/* Hamburger Toggle */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="fixed left-4 top-4 z-50 p-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-200"
+      {/* Sidebar container */}
+      <div
+        className={`fixed left-0 top-[105px] h-[calc(100vh-105px)] bg-zinc-900 transition-all duration-300 z-40 flex flex-col justify-between md:sticky md:top-[105px]
+          ${isOpen ? 'w-48' : 'w-0 overflow-hidden md:w-16 md:overflow-visible'}`}
       >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
+        <div className="pt-10 pb-4 px-2 flex flex-col gap-4">
+          {/* Toggle Button (Columns Icon) - Positioned at the very top of the sidebar list */}
+          <div className="relative group">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm
+                ${isOpen ? 'px-3 py-2.5 gap-2.5 justify-start' : 'p-2.5 justify-center'}
+                text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40`}
+            >
+              <Columns size={iconSize} className="text-zinc-400 group-hover:text-zinc-200" />
+              {isOpen && <span className="truncate">Collapse</span>}
+            </button>
 
-      {/* Sidebar */}
-      <div className={`fixed left-0 top-0 h-screen bg-slate-900 border-r border-slate-800 transition-all duration-300 z-40 ${
-        isOpen ? 'w-72' : 'w-0 overflow-hidden'
-      }`}>
-        {/* Logo / Title */}
-        <div className="flex items-center gap-3 px-6 py-8 border-b border-slate-800">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-            <span className="text-white font-bold text-lg">DL</span>
+            {/* Tooltip for collapsed state */}
+            {!isOpen && (
+              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-900 border border-zinc-750 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg">
+                Expand Menu
+              </div>
+            )}
           </div>
-          {isOpen && <span className="font-bold text-white text-lg">Diversay</span>}
+
+          {/* Navigation Items */}
+          <nav>
+            <ul className="space-y-2">
+              {navItems.map((item) => {
+                const isActive = location.pathname === item.path
+                return (
+                  <li key={item.path} className="relative group">
+                    <button
+                      onClick={() => {
+                        navigate(item.path)
+                        if (window.innerWidth < 768) setIsOpen(false)
+                      }}
+                      className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative
+                        ${isOpen ? 'px-3 pt-2.5 pb-3.5 gap-2.5 justify-start' : 'pt-2.5 pb-3.5 px-2.5 justify-center'}
+                        ${isActive
+                          ? 'bg-white/5 text-white'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}`}
+                    >
+                      <item.icon size={iconSize} className={isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'} />
+                      {isOpen && <span className="truncate">{item.label}</span>}
+
+                      {/* Wobbly Underline for active state */}
+                      {isActive && (
+                        <svg
+                          className={`absolute bottom-1 left-1/2 -translate-x-1/2 h-[6px] text-white pointer-events-none select-none transition-all duration-300 ${isOpen ? 'w-[70%]' : 'w-7'}`}
+                          viewBox="0 0 100 10"
+                          preserveAspectRatio="none"
+                        >
+                          <path
+                            d="M3,7 Q25,2 50,8 T97,5"
+                            stroke="currentColor"
+                            strokeWidth="3.5"
+                            fill="none"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      )}
+                    </button>
+
+                    {/* Tooltip for collapsed state */}
+                    {!isOpen && (
+                      <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-900 border border-zinc-750 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg">
+                        {item.label}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </nav>
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto py-6">
-          <ul className="space-y-2 px-3">
-            {navItems.map((item) => (
-              <li key={item.path}>
+        {/* Bottom Panel */}
+        <div className="flex flex-col gap-2">
+          {/* Request Admin Access for Viewers (Only when open) */}
+          {isOpen && user?.role === 'viewer' && (
+            <div className="mx-2 my-1 p-3 bg-zinc-800/30 rounded-xl border border-zinc-800/80 animate-fadeIn">
+              <p className="text-[11px] text-zinc-400 mb-1.5 leading-relaxed">
+                You are in <strong className="text-zinc-200">Read-Only</strong>. Request admin access.
+              </p>
+              {user.requesting_admin ? (
+                <div className="w-full text-center py-1.5 px-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-[10px] font-semibold text-amber-400 flex items-center justify-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                  Pending
+                </div>
+              ) : (
                 <button
-                  onClick={() => {
-                    navigate(item.path)
-                    if (window.innerWidth < 768) setIsOpen(false)
+                  onClick={async () => {
+                    const res = await requestAdmin();
+                    if (res.success) {
+                      alert("Admin request submitted successfully!");
+                    } else {
+                      alert(res.error || "Failed to submit request.");
+                    }
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors font-medium"
+                  className="w-full py-1.5 px-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium text-[10px] rounded-lg transition-all shadow-md shadow-cyan-500/10 hover:shadow-cyan-500/20 active:scale-[0.98]"
                 >
-                  <item.icon size={20} />
-                  {isOpen && <span>{item.label}</span>}
+                  Request Admin
                 </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
+              )}
+            </div>
+          )}
 
-        {/* Request Admin Access for Viewers */}
-        {isOpen && user?.role === 'viewer' && (
-          <div className="mx-4 my-2 p-4 bg-slate-800/40 rounded-xl border border-slate-800/80">
-            <p className="text-xs text-slate-400 mb-2 leading-relaxed">
-              You are in <strong>Read-Only</strong> mode. Request admin access to edit and manage data.
-            </p>
-            {user.requesting_admin ? (
-              <div className="w-full text-center py-2 px-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs font-semibold text-amber-400 flex items-center justify-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                Access Pending Approval
-              </div>
-            ) : (
+          {/* Request Admin Icon for Viewers (Only when collapsed) */}
+          {!isOpen && user?.role === 'viewer' && (
+            <div className="relative group px-2 mb-2">
               <button
                 onClick={async () => {
+                  if (user.requesting_admin) {
+                    alert("Admin access request is currently pending approval.");
+                    return;
+                  }
+                  const confirmReq = window.confirm("Would you like to request Admin write access?");
+                  if (!confirmReq) return;
                   const res = await requestAdmin();
                   if (res.success) {
                     alert("Admin request submitted successfully!");
@@ -84,30 +156,49 @@ export default function Sidebar() {
                     alert(res.error || "Failed to submit request.");
                   }
                 }}
-                className="w-full py-2 px-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium text-xs rounded-lg transition-all shadow-md shadow-cyan-500/10 hover:shadow-cyan-500/20 active:scale-[0.98]"
+                className={`w-full flex items-center justify-center p-2.5 rounded-xl transition-all duration-200 font-medium
+                  ${user.requesting_admin 
+                    ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' 
+                    : 'text-zinc-500 hover:text-cyan-400 hover:bg-zinc-800/40'}`}
               >
-                Request Admin Access
+                <ShieldAlert size={18} className={user.requesting_admin ? 'animate-pulse' : ''} />
               </button>
-            )}
-          </div>
-        )}
 
-        {/* Logout Button */}
-        <div className="border-t border-slate-800 p-3 mb-4">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-red-900/20 hover:text-red-400 transition-colors font-medium"
-          >
-            <LogOut size={20} />
-            {isOpen && <span>Logout</span>}
-          </button>
+              {/* Tooltip */}
+              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-900 border border-zinc-750 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg">
+                {user.requesting_admin ? "Admin Request Pending" : "Request Admin Access"}
+              </div>
+            </div>
+          )}
+
+          {/* Logout Button */}
+          <div className="p-2 mb-4">
+            <div className="relative group">
+              <button
+                onClick={handleLogout}
+                className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm
+                  ${isOpen ? 'px-3 py-2.5 gap-2.5 justify-start' : 'p-2.5 justify-center'}
+                  text-zinc-400 hover:text-red-400 hover:bg-red-950/15`}
+              >
+                <LogOut size={iconSize} />
+                {isOpen && <span>Logout</span>}
+              </button>
+
+              {/* Tooltip for collapsed state */}
+              {!isOpen && (
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-900 border border-zinc-750 text-red-400 text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg">
+                  Logout
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Overlay when sidebar is open on mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 md:hidden z-30"
+          className="fixed inset-0 bg-black/60 md:hidden z-30 backdrop-blur-sm transition-opacity"
           onClick={() => setIsOpen(false)}
         />
       )}

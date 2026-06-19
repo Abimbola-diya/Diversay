@@ -1,51 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-const BRAND   = 'Diversay Solutions'
+const BRAND = 'Diversay Solutions'
 const LETTERS = BRAND.split('')
 
 // ── Timing constants (ms) ─────────────────────────────────────────────────
-const STAGGER        = 70    // delay between consecutive letter drops
-const LETTER_DUR     = 700   // each letter's arcDrop animation
-const INITIAL_DELAY  = 600   // wait for font to load before cascade starts
-const LETTERS_DONE   = INITIAL_DELAY + LETTERS.length * STAGGER + LETTER_DUR
+const STAGGER = 70    // delay between consecutive letter drops
+const LETTER_DUR = 700   // each letter's arcDrop animation
+const INITIAL_DELAY = 600   // wait for font to load before cascade starts
+const LETTERS_DONE = INITIAL_DELAY + LETTERS.length * STAGGER + LETTER_DUR
 
-const RIPPLE_PAUSE   = 350
+const RIPPLE_PAUSE = 350
 const RIPPLE_STAGGER = 45
-const RIPPLE_DUR     = 560
-const RIPPLE_SPAN    = (LETTERS.length - 1) * RIPPLE_STAGGER + RIPPLE_DUR
+const RIPPLE_DUR = 560
+const RIPPLE_SPAN = (LETTERS.length - 1) * RIPPLE_STAGGER + RIPPLE_DUR
 
-const RIPPLE1_START  = LETTERS_DONE + RIPPLE_PAUSE
-const RIPPLE2_START  = RIPPLE1_START + RIPPLE_SPAN + 220
+const RIPPLE1_START = LETTERS_DONE + RIPPLE_PAUSE
+const RIPPLE2_START = RIPPLE1_START + RIPPLE_SPAN + 220
 
 const PROGRESS_START = RIPPLE2_START + RIPPLE_SPAN + 350
-const PROGRESS_DUR   = 4000
+const PROGRESS_DUR = 4000
 // Slide begins 800ms before NAV_DELAY so the animation finishes right as it unmounts
-const SLIDE_START    = PROGRESS_START + PROGRESS_DUR + 50
-const NAV_DELAY      = SLIDE_START + 850
+const SLIDE_START = PROGRESS_START + PROGRESS_DUR + 50
+const NAV_DELAY = SLIDE_START + 850
 
 // Phase names
-const P = { DROP:'drop', LAND:'land', R1:'r1', R2:'r2', BAR:'bar' }
+const P = { DROP: 'drop', LAND: 'land', R1: 'r1', R2: 'r2', BAR: 'bar' }
 
 // ── Component ──────────────────────────────────────────────────────────────
 export default function SplashPage({ onStartLeaving, onComplete }) {
-  const [phase,     setPhase]     = useState(P.DROP)
+  const [phase, setPhase] = useState(P.DROP)
   const [barActive, setBarActive] = useState(false)
-  const [leaving,   setLeaving]   = useState(false)
+  const [leaving, setLeaving] = useState(false)
 
   // Keep refs up-to-date so the timer effect (which only runs once)
   // always calls the latest version of the callbacks without restarting.
   const startLeavingRef = useRef(onStartLeaving)
-  const completeRef     = useRef(onComplete)
+  const completeRef = useRef(onComplete)
   useEffect(() => { startLeavingRef.current = onStartLeaving }, [onStartLeaving])
-  useEffect(() => { completeRef.current     = onComplete     }, [onComplete])
+  useEffect(() => { completeRef.current = onComplete }, [onComplete])
 
   useEffect(() => {
     const ts = [
       setTimeout(() => setPhase(P.LAND), LETTERS_DONE + 60),
-      setTimeout(() => setPhase(P.R1),   RIPPLE1_START),
+      setTimeout(() => setPhase(P.R1), RIPPLE1_START),
       setTimeout(() => setPhase(P.LAND), RIPPLE1_START + RIPPLE_SPAN + 60),
-      setTimeout(() => setPhase(P.R2),   RIPPLE2_START),
+      setTimeout(() => setPhase(P.R2), RIPPLE2_START),
       setTimeout(() => setPhase(P.LAND), RIPPLE2_START + RIPPLE_SPAN + 60),
       setTimeout(() => { setPhase(P.BAR); setBarActive(true) }, PROGRESS_START),
       setTimeout(() => {
@@ -76,9 +76,9 @@ export default function SplashPage({ onStartLeaving, onComplete }) {
   const asteriskProps = () => {
     switch (phase) {
       case P.DROP: return { cls: 'spl-drop', delay: INITIAL_DELAY + LETTERS.length * STAGGER }
-      case P.R1:   return { cls: 'spl-r1',   delay: 0 }
-      case P.R2:   return { cls: 'spl-r2',   delay: LETTERS.length * RIPPLE_STAGGER }
-      default:     return { cls: 'spl-land',  delay: 0 }
+      case P.R1: return { cls: 'spl-r1', delay: 0 }
+      case P.R2: return { cls: 'spl-r2', delay: LETTERS.length * RIPPLE_STAGGER }
+      default: return { cls: 'spl-land', delay: 0 }
     }
   }
 

@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import DashboardLayout from './components/DashboardLayout'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import PendingApprovalPage from './pages/PendingApprovalPage'
@@ -22,12 +23,14 @@ function App() {
           <Route path="/pending-approval" element={<PendingApprovalPage />} />
           
           <Route element={<ProtectedRoute />}>
-            <Route path="/admin/approvals" element={<AdminApprovalsPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/orders/:id" element={<OrderDetailPage />} />
-            <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/products" element={<ProductsPage />} />
+            <Route element={<DashboardLayout />}>
+              <Route path="/admin/approvals" element={<AdminApprovalsPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/orders/:id" element={<OrderDetailPage />} />
+              <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/products" element={<ProductsPage />} />
+            </Route>
           </Route>
           
           <Route path="/" element={<Navigate to="/login" replace />} />

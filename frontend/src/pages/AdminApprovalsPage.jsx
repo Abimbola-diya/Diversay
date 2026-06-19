@@ -78,28 +78,28 @@ export default function AdminApprovalsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mb-4"></div>
-          <p className="text-slate-700">Loading pending approvals...</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mb-4"></div>
+          <p className="text-zinc-400">Loading pending approvals...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 py-8 px-4">
+    <div className="max-w-4xl mx-auto">
       {/* Header */}
-      <div className="max-w-4xl mx-auto mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Requests</h1>
-        <p className="text-slate-600">
+      <div className="mb-8 animate-fadeIn">
+        <h1 className="text-3xl font-bold text-white mb-2">Admin Requests</h1>
+        <p className="text-zinc-400">
           Review and approve pending requests for admin write access
         </p>
       </div>
 
       {/* Error message */}
       {error && (
-        <div className="max-w-4xl mx-auto mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
           {error}
           <button
             onClick={() => setError('')}
@@ -111,16 +111,16 @@ export default function AdminApprovalsPage() {
       )}
 
       {/* Pending users list */}
-      <div className="max-w-4xl mx-auto">
+      <div>
         {pendingUsers.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm p-8 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-              <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg shadow-md p-8 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-500/15 rounded-full mb-4">
+              <svg className="w-8 h-8 text-green-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold text-slate-900 mb-1">All Caught Up!</h3>
-            <p className="text-slate-600">
+            <h3 className="text-xl font-semibold text-white mb-1">All Caught Up!</h3>
+            <p className="text-zinc-400">
               No pending admin promotion requests at the moment.
             </p>
           </div>
@@ -129,25 +129,25 @@ export default function AdminApprovalsPage() {
             {pendingUsers.map((pendingUser) => (
               <div
                 key={pendingUser.id}
-                className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 hover:shadow-md transition"
+                className="bg-zinc-805/85 border border-zinc-700 rounded-lg shadow-md p-6 hover:border-zinc-600 transition"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-1">
+                    <h3 className="text-lg font-semibold text-white mb-1">
                       {pendingUser.full_name}
                     </h3>
-                    <p className="text-sm text-slate-600 mb-2">{pendingUser.email}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-sm text-zinc-400 mb-2">{pendingUser.email}</p>
+                    <p className="text-xs text-zinc-500">
                       Signed up: {new Date(pendingUser.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <div className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
+                  <div className="px-3 py-1 bg-amber-500/15 text-amber-400 rounded-full text-sm font-medium">
                     Pending
                   </div>
                 </div>
 
                 {/* Action buttons */}
-                <div className="flex gap-3 pt-4 border-t border-slate-200">
+                <div className="flex gap-3 pt-4 border-t border-zinc-700">
                   <button
                     onClick={() => handleApprove(pendingUser.id)}
                     disabled={processingId === pendingUser.id || actionInProgress}
@@ -171,8 +171,8 @@ export default function AdminApprovalsPage() {
 
       {/* Stats */}
       {pendingUsers.length > 0 && (
-        <div className="max-w-4xl mx-auto mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
+        <div className="mt-8 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+          <p className="text-sm text-blue-300">
             <span className="font-semibold">{pendingUsers.length}</span> pending admin request{pendingUsers.length !== 1 ? 's' : ''} awaiting approval
           </p>
         </div>

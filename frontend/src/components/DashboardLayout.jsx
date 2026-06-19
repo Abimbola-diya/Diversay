@@ -1,0 +1,26 @@
+import React, { useState } from 'react'
+import { Outlet } from 'react-router-dom'
+import Sidebar from './Sidebar'
+import TopBar from './TopBar'
+
+export default function DashboardLayout() {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  return (
+    <div className="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col" style={{ fontFamily: '"Lora", Georgia, serif' }}>
+      {/* TopBar with mobile menu toggle */}
+      <TopBar onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
+
+      {/* Container below TopBar */}
+      <div className="flex flex-1 relative">
+        {/* Sidebar component */}
+        <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+
+        {/* Main Content Area */}
+        <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  )
+}

@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import Sidebar from '../components/Sidebar'
-import TopBar from '../components/TopBar'
 import DashboardMetricsCards from '../components/DashboardMetricsCards'
 import DashboardTabs from '../components/DashboardTabs'
 import OrdersTable from '../components/OrdersTable'
@@ -16,6 +14,7 @@ export default function DashboardPage() {
 
   // Show welcome animation on every load (for testing — will revert later)
   const [showWelcome, setShowWelcome] = useState(true)
+  const [dashboardActive, setDashboardActive] = useState(false)
   const [hideTopBarGreeting, setHideTopBarGreeting] = useState(true)
 
   useEffect(() => {
@@ -32,67 +31,66 @@ export default function DashboardPage() {
     }
   }, [cameFromLogin])
 
+  const handleWelcomeLeave = () => {
+    setDashboardActive(true)
+    setHideTopBarGreeting(false)
+  }
+
   const handleWelcomeComplete = () => {
     setShowWelcome(false)
-    setHideTopBarGreeting(false)
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mb-4"></div>
-          <p className="text-slate-400">Loading dashboard...</p>
+          <p className="text-zinc-400">Loading dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="relative">
       {/* Welcome animation overlay */}
       {showWelcome && (
         <DashboardWelcome
           userName={user?.full_name}
+          onLeave={handleWelcomeLeave}
           onComplete={handleWelcomeComplete}
         />
       )}
 
-      {/* Dashboard content — always rendered so TopBar positions can be measured */}
-      <div style={{ opacity: 1 }}>
-        {/* Sidebar */}
-        <Sidebar />
+      {/* Dashboard content */}
+      <div
+        style={{
+          transition: 'transform 1000ms cubic-bezier(0.16, 1, 0.3, 1), opacity 1000ms ease-out',
+          transform: dashboardActive ? 'translateY(0)' : 'translateY(80px)',
+          opacity: dashboardActive ? 1 : 0,
+        }}
+      >
+        {/* Dashboard Title */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
+          <p className="text-zinc-400">
+            Overview of all logistics operations and order management
+          </p>
+        </div>
 
-        {/* Main Content */}
-        <div className="lg:ml-0 pt-16 md:pt-0">
-          {/* Top Bar */}
-          <TopBar hideGreeting={hideTopBarGreeting} />
+        {/* Metrics Cards */}
+        <div className="mb-8">
+          <DashboardMetricsCards />
+        </div>
 
-          {/* Content */}
-          <main className="p-8 max-w-7xl mx-auto">
-            {/* Dashboard Title */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
-              <p className="text-slate-400">
-                Overview of all logistics operations and order management
-              </p>
-            </div>
+        {/* Tabs Section */}
+        <div className="mb-8">
+          <DashboardTabs />
+        </div>
 
-            {/* Metrics Cards */}
-            <div className="mb-8">
-              <DashboardMetricsCards />
-            </div>
-
-            {/* Tabs Section */}
-            <div className="mb-8">
-              <DashboardTabs />
-            </div>
-
-            {/* Orders Table */}
-            <div className="mb-8">
-              <OrdersTable />
-            </div>
-          </main>
+        {/* Orders Table */}
+        <div className="mb-8">
+          <OrdersTable />
         </div>
       </div>
     </div>

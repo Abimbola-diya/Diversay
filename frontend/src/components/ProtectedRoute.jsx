@@ -6,11 +6,17 @@ export default function ProtectedRoute() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-950">
-        <div className="text-slate-400">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen bg-zinc-900">
+        <div className="text-zinc-400">Loading...</div>
       </div>
     )
   }
 
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
+  return isAuthenticated ? (
+    <div style={{ fontFamily: '"Lora", Georgia, serif', fontStyle: 'normal' }}>
+      <Outlet />
+    </div>
+  ) : (
+    <Navigate to="/login" replace />
+  )
 }

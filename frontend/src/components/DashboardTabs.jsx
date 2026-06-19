@@ -93,14 +93,14 @@ export default function DashboardTabs() {
       'Delayed': 'bg-red-500/10 text-red-400 border-red-500/20',
       'Delivered (On Time)': 'bg-green-500/10 text-green-400 border-green-500/20',
       'Delivered (Late)': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-      'Draft': 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+      'Draft': 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
     }
     return colors[status] || colors['Draft']
   }
 
   const renderTabContent = () => {
     if (loading) {
-      return <div className="py-8 text-center text-slate-400">Loading...</div>
+      return <div className="py-8 text-center text-zinc-400">Loading...</div>
     }
 
     switch (activeTab) {
@@ -108,12 +108,12 @@ export default function DashboardTabs() {
         return (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
-              <div className="py-8 text-center text-slate-400">No notifications</div>
+              <div className="py-8 text-center text-zinc-400">No notifications</div>
             ) : (
               notifications.map(notif => (
                 <div
                   key={notif.id}
-                  className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors cursor-pointer group"
+                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -127,12 +127,12 @@ export default function DashboardTabs() {
                           </span>
                         )}
                       </div>
-                      <p className="text-slate-400 text-sm">{notif.message}</p>
-                      <p className="text-slate-500 text-xs mt-2">
+                      <p className="text-zinc-400 text-sm">{notif.message}</p>
+                      <p className="text-zinc-500 text-xs mt-2">
                         {formatDistanceToNow(new Date(notif.timestamp), { addSuffix: true })}
                       </p>
                     </div>
-                    <ChevronRight size={20} className="text-slate-500 group-hover:text-slate-400" />
+                    <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                   </div>
                 </div>
               ))
@@ -144,20 +144,20 @@ export default function DashboardTabs() {
         return (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {activities.length === 0 ? (
-              <div className="py-8 text-center text-slate-400">No recent activities</div>
+              <div className="py-8 text-center text-zinc-400">No recent activities</div>
             ) : (
               activities.map(activity => (
                 <div
                   key={activity.id}
-                  className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
+                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <h4 className="font-semibold text-white capitalize">
                         {activity.action}
                       </h4>
-                      <p className="text-slate-400 text-sm">{activity.message}</p>
-                      <p className="text-slate-500 text-xs mt-2">
+                      <p className="text-zinc-400 text-sm">{activity.message}</p>
+                      <p className="text-zinc-500 text-xs mt-2">
                         {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
                       </p>
                     </div>
@@ -172,33 +172,33 @@ export default function DashboardTabs() {
         return (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {scheduledDeliveries.length === 0 ? (
-              <div className="py-8 text-center text-slate-400">No scheduled deliveries</div>
+              <div className="py-8 text-center text-zinc-400">No scheduled deliveries</div>
             ) : (
               scheduledDeliveries.map(order => (
                 <div
                   key={order.id}
-                  className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
+                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-white">{order.customer_name}</h4>
-                        <span className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded">
+                        <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
                           {order.order_number}
                         </span>
                       </div>
-                      <p className="text-slate-400 text-sm">
+                      <p className="text-zinc-400 text-sm">
                         Expected delivery: {new Date(order.expected_delivery_time).toLocaleDateString()}
                       </p>
                       <div className="flex gap-2 mt-2 flex-wrap">
                         {order.line_items?.slice(0, 2).map((item, idx) => (
-                          <span key={idx} className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded">
+                          <span key={idx} className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
                             {item.product_name} × {item.quantity}
                           </span>
                         ))}
                       </div>
                     </div>
-                    <ChevronRight size={20} className="text-slate-500" />
+                    <ChevronRight size={20} className="text-zinc-500" />
                   </div>
                 </div>
               ))
@@ -210,7 +210,7 @@ export default function DashboardTabs() {
         return (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {pendingIssues.length === 0 ? (
-              <div className="py-8 text-center text-slate-400">No pending issues</div>
+              <div className="py-8 text-center text-zinc-400">No pending issues</div>
             ) : (
               pendingIssues.map(order => (
                 <div
@@ -225,7 +225,7 @@ export default function DashboardTabs() {
                           {order.order_number}
                         </span>
                       </div>
-                      <p className="text-slate-400 text-sm">
+                      <p className="text-zinc-400 text-sm">
                         Expected: {new Date(order.expected_delivery_time).toLocaleDateString()}
                       </p>
                       <p className="text-red-400 text-xs mt-1">
@@ -246,25 +246,24 @@ export default function DashboardTabs() {
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
       {/* Tab Headers */}
-      <div className="flex border-b border-slate-800 overflow-x-auto">
+      <div className="flex border-b border-zinc-800 overflow-x-auto">
         {tabs.map(tab => {
           const Icon = tab.icon
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === tab.id
+              className={`flex items-center gap-2 px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id
                   ? 'border-cyan-500 text-cyan-400'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
+                  : 'border-transparent text-zinc-400 hover:text-white'
+                }`}
             >
               <Icon size={18} />
               <span>{tab.label}</span>
               {tab.badge > 0 && (
-                <span className="ml-2 px-2 py-1 bg-slate-800 text-slate-300 text-xs rounded-full">
+                <span className="ml-2 px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded-full">
                   {tab.badge}
                 </span>
               )}

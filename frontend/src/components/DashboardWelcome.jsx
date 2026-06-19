@@ -70,19 +70,21 @@ const LETTER_FLY_DURATION = 700  // ms for each letter's flight
 const FADE_OUT_DELAY = 600     // after letters land, fade overlay out
 
 // ── Component ──────────────────────────────────────────────────────────────
-export default function DashboardWelcome({ userName, onComplete }) {
-  // glow → typing → hold → measure → flying → done
+export default function DashboardWelcome({ userName, onComplete, onLeave }) {
+  // glow → typing → hold → leaving
   const [phase, setPhase] = useState('glow')
   const [displayedText, setDisplayedText] = useState('')
   const [cursorVisible, setCursorVisible] = useState(true)
   const [overlayFading, setOverlayFading] = useState(false)
   const [showBlueGlow, setShowBlueGlow] = useState(false)
-  const [flyingLetters, setFlyingLetters] = useState(null) // null = not calculated yet
 
   const greetingRef = useRef(getGreetingData())
   const completeRef = useRef(onComplete)
+  const leaveRef = useRef(onLeave)
   const sourceRef = useRef(null)
+
   useEffect(() => { completeRef.current = onComplete }, [onComplete])
+  useEffect(() => { leaveRef.current = onLeave }, [onLeave])
 
   const firstName = userName?.split(' ')[0] || 'Admin'
   const { greeting, quip } = greetingRef.current
@@ -117,68 +119,21 @@ export default function DashboardWelcome({ userName, onComplete }) {
     // 3. Hold the text for a moment
     timers.push(setTimeout(() => setPhase('hold'), typingDone))
 
-    // 4. Trigger measurement phase (source text still visible)
+    // 4. Trigger leave transition
     timers.push(setTimeout(() => {
-      setPhase('measure')
+      setPhase('leaving')
+      if (leaveRef.current) leaveRef.current()
+      setOverlayFading(true)
+
+      // 5. Complete and unmount after fade-out transition
+      setTimeout(() => {
+        if (completeRef.current) completeRef.current()
+      }, FADE_OUT_DELAY)
+
     }, typingDone + PAUSE_AFTER_TYPE))
 
     return () => timers.forEach(clearTimeout)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Measure positions then start flying ─────────────────────────────────
-  useEffect(() => {
-    if (phase !== 'measure') return
-
-    // Use double-rAF to ensure layout is fully painted
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const sourceSpans = sourceRef.current?.querySelectorAll('[data-src-char]')
-        if (!sourceSpans || sourceSpans.length === 0) {
-          // Fallback: just fade out
-          setOverlayFading(true)
-          setTimeout(() => { if (completeRef.current) completeRef.current() }, FADE_OUT_DELAY)
-          return
-        }
-
-        const letters = []
-        for (let i = 0; i < greetingPart.length; i++) {
-          const srcSpan = sourceSpans[i]
-          const tgtSpan = document.querySelector(`[data-topbar-char="${i}"]`)
-          if (!srcSpan || !tgtSpan) continue
-
-          const srcRect = srcSpan.getBoundingClientRect()
-          const tgtRect = tgtSpan.getBoundingClientRect()
-
-          letters.push({
-            char: greetingPart[i],
-            index: i,
-            fromX: srcRect.left,
-            fromY: srcRect.top,
-            toX: tgtRect.left,
-            toY: tgtRect.top,
-            delay: i * LETTER_FLY_STAGGER,
-            srcFontSize: window.getComputedStyle(srcSpan).fontSize,
-            tgtFontSize: window.getComputedStyle(tgtSpan).fontSize,
-          })
-        }
-
-        // Set the calculated positions and switch to flying phase
-        setFlyingLetters(letters)
-        setPhase('flying')
-
-        // Schedule fade out after all letters have landed
-        const totalFlight = greetingPart.length * LETTER_FLY_STAGGER + LETTER_FLY_DURATION + 300
-        setTimeout(() => setOverlayFading(true), totalFlight)
-        setTimeout(() => {
-          if (completeRef.current) completeRef.current()
-        }, totalFlight + FADE_OUT_DELAY)
-      })
-    })
-  }, [phase, greetingPart])
-
-  // Source text is visible during glow, typing, hold, and measure phases
-  const showSourceText = phase !== 'flying'
-  const isFlying = phase === 'flying' && flyingLetters !== null
+  }, [fullText])
 
   return createPortal(
     <div
@@ -275,117 +230,54 @@ export default function DashboardWelcome({ userName, onComplete }) {
       {/* ── Soft Blue Neon Line Border ── */}
       <div className={`blue-border-container ${showBlueGlow ? 'active' : ''}`} />
 
-      {/* ── Source greeting text (visible until flight starts) ── */}
-      {showSourceText && (
-        <div
+      {/* ── Source greeting text ── */}
+      <div
+        style={{
+          position: 'absolute',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 10,
+          whiteSpace: 'normal',
+          maxWidth: '90vw',
+        }}
+      >
+        <h1
+          ref={sourceRef}
           style={{
-            position: 'absolute',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 10,
-            whiteSpace: 'normal',
-            maxWidth: '90vw',
+            fontFamily: '"Lora", Georgia, serif',
+            fontStyle: 'normal',
+            fontSize: 'clamp(1.8rem, 4vw, 3.2rem)',
+            fontWeight: 700,
+            color: '#ffffff',
+            letterSpacing: '-0.01em',
+            lineHeight: 1.35,
+            textAlign: 'center',
+            textShadow: 'none',
           }}
         >
-          <h1
-            ref={sourceRef}
-            style={{
-              fontFamily: '"Playfair Display", Georgia, serif',
-              fontSize: 'clamp(1.8rem, 4vw, 3.2rem)',
-              fontWeight: 700,
-              color: '#ffffff',
-              letterSpacing: '-0.01em',
-              lineHeight: 1.35,
-              textAlign: 'center',
-              textShadow: 'none',
-            }}
-          >
-            {/* Greeting part as individual measurable spans */}
-            {displayedText.slice(0, greetingPart.length).split('').map((char, i) => (
-              <span key={`src-${i}`} data-src-char={i}>{char}</span>
-            ))}
-            {/* Quip part as a single block */}
-            {displayedText.length > greetingPart.length && (
-              <span>{displayedText.slice(greetingPart.length)}</span>
-            )}
-            {/* Blinking cursor */}
-            {(phase === 'typing' || phase === 'hold') && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: '3px',
-                  height: '1em',
-                  backgroundColor: '#ffffff',
-                  marginLeft: '6px',
-                  verticalAlign: 'text-bottom',
-                  opacity: cursorVisible ? 1 : 0,
-                  transition: 'opacity 0.1s',
-                }}
-              />
-            )}
-          </h1>
-        </div>
-      )}
-
-      {/* ── Flying letters (during flight phase) ── */}
-      {isFlying && flyingLetters.map((letter) => (
-        <FlyingLetter
-          key={letter.index}
-          char={letter.char}
-          fromX={letter.fromX}
-          fromY={letter.fromY}
-          toX={letter.toX}
-          toY={letter.toY}
-          delay={letter.delay}
-          duration={LETTER_FLY_DURATION}
-          srcFontSize={letter.srcFontSize}
-          tgtFontSize={letter.tgtFontSize}
-        />
-      ))}
+          {displayedText}
+          {/* Blinking cursor */}
+          {(phase === 'typing' || phase === 'hold') && (
+            <span
+              style={{
+                display: 'inline-block',
+                width: '3px',
+                height: '1em',
+                backgroundColor: '#ffffff',
+                marginLeft: '6px',
+                verticalAlign: 'text-bottom',
+                opacity: cursorVisible ? 1 : 0,
+                transition: 'opacity 0.1s',
+              }}
+            />
+          )}
+        </h1>
+      </div>
     </div>,
     document.body
-  )
-}
-
-// ── Individual Flying Letter ───────────────────────────────────────────────
-function FlyingLetter({ char, fromX, fromY, toX, toY, delay, duration, srcFontSize, tgtFontSize }) {
-  const ref = useRef(null)
-  const [started, setStarted] = useState(false)
-
-  useEffect(() => {
-    // Start at source position, then after delay, animate to target
-    const timer = setTimeout(() => {
-      setStarted(true)
-    }, delay)
-    return () => clearTimeout(timer)
-  }, [delay])
-
-  return (
-    <span
-      ref={ref}
-      style={{
-        position: 'fixed',
-        left: started ? `${toX}px` : `${fromX}px`,
-        top: started ? `${toY}px` : `${fromY}px`,
-        fontSize: started ? tgtFontSize : srcFontSize,
-        fontFamily: started
-          ? 'ui-sans-serif, system-ui, -apple-system, sans-serif'
-          : '"Playfair Display", Georgia, serif',
-        fontWeight: 700,
-        color: '#ffffff',
-        pointerEvents: 'none',
-        zIndex: 10000,
-        willChange: 'left, top, font-size',
-        transition: started
-          ? `left ${duration}ms cubic-bezier(0.25, 1, 0.5, 1), top ${duration}ms cubic-bezier(0.25, 1, 0.5, 1), font-size ${duration}ms ease-out, font-family ${duration * 0.5}ms ease`
-          : 'none',
-      }}
-    >
-      {char}
-    </span>
   )
 }
