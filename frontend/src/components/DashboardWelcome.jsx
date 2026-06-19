@@ -64,7 +64,7 @@ function getGreetingData() {
 const GLOW_WARMUP = 600     // glow edges warm up
 const TYPE_DELAY = GLOW_WARMUP + 200
 const TYPE_SPEED = 48      // ms per character
-const PAUSE_AFTER_TYPE = 3500    // hold the full text
+const PAUSE_AFTER_TYPE = 5000    // hold the full text
 const SHRINK_DURATION = 900     // CSS transition length for shrink
 const FADE_OUT_DELAY = 400     // after shrink, fade overlay out
 
@@ -245,7 +245,6 @@ export default function DashboardWelcome({ userName, onComplete }) {
         <h1
           style={{
             fontFamily: '"Playfair Display", Georgia, serif',
-            fontStyle: 'italic',
             fontSize: isShrunk ? '1.35rem' : 'clamp(1.8rem, 4vw, 3.2rem)',
             fontWeight: 700,
             color: '#ffffff',
