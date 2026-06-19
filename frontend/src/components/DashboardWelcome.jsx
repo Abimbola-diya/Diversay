@@ -65,24 +65,30 @@ const GLOW_WARMUP = 600     // glow edges warm up
 const TYPE_DELAY = GLOW_WARMUP + 200
 const TYPE_SPEED = 48      // ms per character
 const PAUSE_AFTER_TYPE = 5000    // hold the full text
-const SHRINK_DURATION = 900     // CSS transition length for shrink
-const FADE_OUT_DELAY = 400     // after shrink, fade overlay out
+const LETTER_FLY_STAGGER = 30   // ms between each letter starting to fly
+const LETTER_FLY_DURATION = 700  // ms for each letter's flight
+const FADE_OUT_DELAY = 600     // after letters land, fade overlay out
 
 // ── Component ──────────────────────────────────────────────────────────────
 export default function DashboardWelcome({ userName, onComplete }) {
-  const [phase, setPhase] = useState('glow')        // glow → typing → hold → shrink → done
+  // glow → typing → hold → measure → flying → done
+  const [phase, setPhase] = useState('glow')
   const [displayedText, setDisplayedText] = useState('')
   const [cursorVisible, setCursorVisible] = useState(true)
   const [overlayFading, setOverlayFading] = useState(false)
   const [showBlueGlow, setShowBlueGlow] = useState(false)
+  const [flyingLetters, setFlyingLetters] = useState(null) // null = not calculated yet
 
   const greetingRef = useRef(getGreetingData())
   const completeRef = useRef(onComplete)
+  const sourceRef = useRef(null)
   useEffect(() => { completeRef.current = onComplete }, [onComplete])
 
   const firstName = userName?.split(' ')[0] || 'Admin'
   const { greeting, quip } = greetingRef.current
-  const fullText = `${greeting}, ${firstName}, ${quip}`
+  const greetingPart = `${greeting}, ${firstName}`
+  const quipPart = `, ${quip}`
+  const fullText = `${greetingPart}${quipPart}`
 
   // ── Cursor blink ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -111,21 +117,68 @@ export default function DashboardWelcome({ userName, onComplete }) {
     // 3. Hold the text for a moment
     timers.push(setTimeout(() => setPhase('hold'), typingDone))
 
-    // 4. Shrink text to corner
-    timers.push(setTimeout(() => setPhase('shrink'), typingDone + PAUSE_AFTER_TYPE))
-
-    // 5. Fade overlay
-    timers.push(setTimeout(() => setOverlayFading(true), typingDone + PAUSE_AFTER_TYPE + SHRINK_DURATION * 0.3))
-
-    // 6. Done — unmount
+    // 4. Trigger measurement phase (source text still visible)
     timers.push(setTimeout(() => {
-      if (completeRef.current) completeRef.current()
-    }, typingDone + PAUSE_AFTER_TYPE + SHRINK_DURATION + FADE_OUT_DELAY))
+      setPhase('measure')
+    }, typingDone + PAUSE_AFTER_TYPE))
 
     return () => timers.forEach(clearTimeout)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isShrunk = phase === 'shrink'
+  // ── Measure positions then start flying ─────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'measure') return
+
+    // Use double-rAF to ensure layout is fully painted
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const sourceSpans = sourceRef.current?.querySelectorAll('[data-src-char]')
+        if (!sourceSpans || sourceSpans.length === 0) {
+          // Fallback: just fade out
+          setOverlayFading(true)
+          setTimeout(() => { if (completeRef.current) completeRef.current() }, FADE_OUT_DELAY)
+          return
+        }
+
+        const letters = []
+        for (let i = 0; i < greetingPart.length; i++) {
+          const srcSpan = sourceSpans[i]
+          const tgtSpan = document.querySelector(`[data-topbar-char="${i}"]`)
+          if (!srcSpan || !tgtSpan) continue
+
+          const srcRect = srcSpan.getBoundingClientRect()
+          const tgtRect = tgtSpan.getBoundingClientRect()
+
+          letters.push({
+            char: greetingPart[i],
+            index: i,
+            fromX: srcRect.left,
+            fromY: srcRect.top,
+            toX: tgtRect.left,
+            toY: tgtRect.top,
+            delay: i * LETTER_FLY_STAGGER,
+            srcFontSize: window.getComputedStyle(srcSpan).fontSize,
+            tgtFontSize: window.getComputedStyle(tgtSpan).fontSize,
+          })
+        }
+
+        // Set the calculated positions and switch to flying phase
+        setFlyingLetters(letters)
+        setPhase('flying')
+
+        // Schedule fade out after all letters have landed
+        const totalFlight = greetingPart.length * LETTER_FLY_STAGGER + LETTER_FLY_DURATION + 300
+        setTimeout(() => setOverlayFading(true), totalFlight)
+        setTimeout(() => {
+          if (completeRef.current) completeRef.current()
+        }, totalFlight + FADE_OUT_DELAY)
+      })
+    })
+  }, [phase, greetingPart])
+
+  // Source text is visible during glow, typing, hold, and measure phases
+  const showSourceText = phase !== 'flying'
+  const isFlying = phase === 'flying' && flyingLetters !== null
 
   return createPortal(
     <div
@@ -133,7 +186,7 @@ export default function DashboardWelcome({ userName, onComplete }) {
         position: 'fixed',
         inset: 0,
         zIndex: 9998,
-        backgroundColor: '#18181b', // Exact blackish of the signup/login page
+        backgroundColor: '#18181b',
         opacity: overlayFading ? 0 : 1,
         transition: `opacity ${FADE_OUT_DELAY}ms ease-out`,
         pointerEvents: overlayFading ? 'none' : 'auto',
@@ -156,13 +209,12 @@ export default function DashboardWelcome({ userName, onComplete }) {
         .electron-glow-border {
           position: absolute;
           inset: 0;
-          padding: 3.5px; /* thin 3.5px ribbon of light */
+          padding: 3.5px;
           -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
           -webkit-mask-composite: xor;
           mask-composite: exclude;
           overflow: hidden;
         }
-        /* Rotating child to move colors extremely fast along borders */
         .electron-rotator {
           position: absolute;
           top: 50%;
@@ -186,7 +238,7 @@ export default function DashboardWelcome({ userName, onComplete }) {
           to { transform: translate(-50%, -50%) rotate(360deg); }
         }
 
-        /* ── Blue Neon Glow Thin Line Border (Fades in after 2 seconds) ── */
+        /* ── Blue Neon Glow Thin Line Border ── */
         .blue-border-container {
           position: absolute;
           inset: 0;
@@ -213,67 +265,127 @@ export default function DashboardWelcome({ userName, onComplete }) {
         }
       `}</style>
 
-      {/* ── Multi-color Fast Electron Border (First 2 seconds) ── */}
+      {/* ── Multi-color Fast Electron Border ── */}
       <div className={`electron-border-container ${showBlueGlow ? 'inactive' : ''}`}>
         <div className="electron-glow-border">
           <div className="electron-rotator" />
         </div>
       </div>
 
-      {/* ── Soft Blue Neon Line Border (Fades in after 2 seconds) ── */}
+      {/* ── Soft Blue Neon Line Border ── */}
       <div className={`blue-border-container ${showBlueGlow ? 'active' : ''}`} />
 
-      {/* ── Greeting text ── */}
-      <div
-        style={{
-          position: 'absolute',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: isShrunk ? 'flex-start' : 'center',
-          // Center → top-left corner transition
-          top: isShrunk ? '28px' : '50%',
-          left: isShrunk ? '88px' : '50%',
-          transform: isShrunk
-            ? 'translate(0, 0)'
-            : 'translate(-50%, -50%)',
-          transition: `all ${SHRINK_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-          zIndex: 10,
-          whiteSpace: isShrunk ? 'nowrap' : 'normal',
-          maxWidth: isShrunk ? '500px' : '90vw',
-        }}
-      >
-        <h1
+      {/* ── Source greeting text (visible until flight starts) ── */}
+      {showSourceText && (
+        <div
           style={{
-            fontFamily: '"Playfair Display", Georgia, serif',
-            fontSize: isShrunk ? '1.35rem' : 'clamp(1.8rem, 4vw, 3.2rem)',
-            fontWeight: 700,
-            color: '#ffffff',
-            letterSpacing: '-0.01em',
-            lineHeight: 1.35,
-            textAlign: isShrunk ? 'left' : 'center',
-            transition: `all ${SHRINK_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-            textShadow: 'none', // No blue glow on the writing
+            position: 'absolute',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 10,
+            whiteSpace: 'normal',
+            maxWidth: '90vw',
           }}
         >
-          {displayedText}
-          {/* Blinking cursor */}
-          {phase !== 'shrink' && (
-            <span
-              style={{
-                display: 'inline-block',
-                width: '3px',
-                height: '1em',
-                backgroundColor: '#ffffff', // Normal white cursor
-                marginLeft: '6px',
-                verticalAlign: 'text-bottom',
-                opacity: cursorVisible ? 1 : 0,
-                transition: 'opacity 0.1s',
-              }}
-            />
-          )}
-        </h1>
-      </div>
+          <h1
+            ref={sourceRef}
+            style={{
+              fontFamily: '"Playfair Display", Georgia, serif',
+              fontSize: 'clamp(1.8rem, 4vw, 3.2rem)',
+              fontWeight: 700,
+              color: '#ffffff',
+              letterSpacing: '-0.01em',
+              lineHeight: 1.35,
+              textAlign: 'center',
+              textShadow: 'none',
+            }}
+          >
+            {/* Greeting part as individual measurable spans */}
+            {displayedText.slice(0, greetingPart.length).split('').map((char, i) => (
+              <span key={`src-${i}`} data-src-char={i}>{char}</span>
+            ))}
+            {/* Quip part as a single block */}
+            {displayedText.length > greetingPart.length && (
+              <span>{displayedText.slice(greetingPart.length)}</span>
+            )}
+            {/* Blinking cursor */}
+            {(phase === 'typing' || phase === 'hold') && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '3px',
+                  height: '1em',
+                  backgroundColor: '#ffffff',
+                  marginLeft: '6px',
+                  verticalAlign: 'text-bottom',
+                  opacity: cursorVisible ? 1 : 0,
+                  transition: 'opacity 0.1s',
+                }}
+              />
+            )}
+          </h1>
+        </div>
+      )}
+
+      {/* ── Flying letters (during flight phase) ── */}
+      {isFlying && flyingLetters.map((letter) => (
+        <FlyingLetter
+          key={letter.index}
+          char={letter.char}
+          fromX={letter.fromX}
+          fromY={letter.fromY}
+          toX={letter.toX}
+          toY={letter.toY}
+          delay={letter.delay}
+          duration={LETTER_FLY_DURATION}
+          srcFontSize={letter.srcFontSize}
+          tgtFontSize={letter.tgtFontSize}
+        />
+      ))}
     </div>,
     document.body
+  )
+}
+
+// ── Individual Flying Letter ───────────────────────────────────────────────
+function FlyingLetter({ char, fromX, fromY, toX, toY, delay, duration, srcFontSize, tgtFontSize }) {
+  const ref = useRef(null)
+  const [started, setStarted] = useState(false)
+
+  useEffect(() => {
+    // Start at source position, then after delay, animate to target
+    const timer = setTimeout(() => {
+      setStarted(true)
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [delay])
+
+  return (
+    <span
+      ref={ref}
+      style={{
+        position: 'fixed',
+        left: started ? `${toX}px` : `${fromX}px`,
+        top: started ? `${toY}px` : `${fromY}px`,
+        fontSize: started ? tgtFontSize : srcFontSize,
+        fontFamily: started
+          ? 'ui-sans-serif, system-ui, -apple-system, sans-serif'
+          : '"Playfair Display", Georgia, serif',
+        fontWeight: 700,
+        color: '#ffffff',
+        pointerEvents: 'none',
+        zIndex: 10000,
+        willChange: 'left, top, font-size',
+        transition: started
+          ? `left ${duration}ms cubic-bezier(0.25, 1, 0.5, 1), top ${duration}ms cubic-bezier(0.25, 1, 0.5, 1), font-size ${duration}ms ease-out, font-family ${duration * 0.5}ms ease`
+          : 'none',
+      }}
+    >
+      {char}
+    </span>
   )
 }

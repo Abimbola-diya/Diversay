@@ -16,7 +16,7 @@ export default function DashboardPage() {
 
   // Show welcome animation on every load (for testing — will revert later)
   const [showWelcome, setShowWelcome] = useState(true)
-  const [contentVisible, setContentVisible] = useState(false)
+  const [hideTopBarGreeting, setHideTopBarGreeting] = useState(true)
 
   useEffect(() => {
     // Redirect if not authenticated
@@ -34,8 +34,7 @@ export default function DashboardPage() {
 
   const handleWelcomeComplete = () => {
     setShowWelcome(false)
-    // Small delay so the overlay fades before content pops in
-    setTimeout(() => setContentVisible(true), 100)
+    setHideTopBarGreeting(false)
   }
 
   if (loading) {
@@ -59,20 +58,15 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Dashboard content — fades in after welcome */}
-      <div
-        style={{
-          opacity: contentVisible ? 1 : 0,
-          transition: 'opacity 0.6s ease-in',
-        }}
-      >
+      {/* Dashboard content — always rendered so TopBar positions can be measured */}
+      <div style={{ opacity: 1 }}>
         {/* Sidebar */}
         <Sidebar />
 
         {/* Main Content */}
         <div className="lg:ml-0 pt-16 md:pt-0">
           {/* Top Bar */}
-          <TopBar />
+          <TopBar hideGreeting={hideTopBarGreeting} />
 
           {/* Content */}
           <main className="p-8 max-w-7xl mx-auto">

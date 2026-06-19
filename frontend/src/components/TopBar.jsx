@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { User, CreditCard } from 'lucide-react'
 
-export default function TopBar() {
+export default function TopBar({ hideGreeting = false }) {
   const { user } = useAuth()
   const [greeting, setGreeting] = useState('')
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -48,6 +48,8 @@ export default function TopBar() {
     })
   }
 
+  const fullGreeting = `${greeting}, ${user?.full_name?.split(' ')[0] || 'Admin'}`
+
   return (
     <div className="bg-slate-900 border-b border-slate-800 sticky top-0 z-20">
       <div className="flex items-center justify-between px-8 py-6">
@@ -60,8 +62,16 @@ export default function TopBar() {
 
           {/* Greeting and Date */}
           <div>
-            <h2 className="text-2xl font-bold text-white">
-              {greeting}, {user?.full_name?.split(' ')[0] || 'Admin'}
+            <h2
+              id="topbar-greeting"
+              className="text-2xl font-bold text-white"
+              style={{ visibility: hideGreeting ? 'hidden' : 'visible' }}
+            >
+              {fullGreeting.split('').map((char, i) => (
+                <span key={i} data-topbar-char={i}>
+                  {char}
+                </span>
+              ))}
             </h2>
             <p className="text-slate-400 text-sm">
               {formatDate(currentTime)}
