@@ -12,11 +12,11 @@ export default function DashboardPage() {
   const { user, loading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-
-  // Show welcome animation only on fresh login (not on page refreshes)
   const cameFromLogin = location.state?.fromLogin === true
-  const [showWelcome, setShowWelcome] = useState(cameFromLogin)
-  const [contentVisible, setContentVisible] = useState(!cameFromLogin)
+
+  // Show welcome animation on every load (for testing — will revert later)
+  const [showWelcome, setShowWelcome] = useState(true)
+  const [contentVisible, setContentVisible] = useState(false)
 
   useEffect(() => {
     // Redirect if not authenticated

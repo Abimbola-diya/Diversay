@@ -138,81 +138,89 @@ export default function DashboardWelcome({ userName, onComplete }) {
     >
       {/* ── Inline styles ── */}
       <style>{`
-        @keyframes glowPulse {
-          0%, 100% { opacity: 0.35; }
-          50% { opacity: 0.8; }
+        @keyframes geminiShift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
         }
-        @keyframes glowPulseSlow {
-          0%, 100% { opacity: 0.2; }
-          50% { opacity: 0.55; }
+        @keyframes pulseGlow {
+          0%, 100% { opacity: 0.45; }
+          50% { opacity: 0.75; }
         }
-        @keyframes cornerGlowPulse {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.15); }
-        }
-        .dw-glow-top {
-          position: absolute; top: 0; left: 5%; right: 5%; height: 2px;
-          background: linear-gradient(90deg, transparent, #3b82f6, #06b6d4, #3b82f6, transparent);
-          box-shadow: 0 0 30px 8px rgba(59,130,246,0.4), 0 0 80px 20px rgba(6,182,212,0.2);
-          animation: glowPulse 3s ease-in-out infinite;
-        }
-        .dw-glow-bottom {
-          position: absolute; bottom: 0; left: 5%; right: 5%; height: 2px;
-          background: linear-gradient(90deg, transparent, #06b6d4, #3b82f6, #06b6d4, transparent);
-          box-shadow: 0 0 30px 8px rgba(6,182,212,0.4), 0 0 80px 20px rgba(59,130,246,0.2);
-          animation: glowPulse 3s ease-in-out infinite 0.5s;
-        }
-        .dw-glow-left {
-          position: absolute; left: 0; top: 5%; bottom: 5%; width: 2px;
-          background: linear-gradient(180deg, transparent, #3b82f6, #06b6d4, #3b82f6, transparent);
-          box-shadow: 0 0 30px 8px rgba(59,130,246,0.4), 0 0 80px 20px rgba(6,182,212,0.2);
-          animation: glowPulse 3s ease-in-out infinite 1s;
-        }
-        .dw-glow-right {
-          position: absolute; right: 0; top: 5%; bottom: 5%; width: 2px;
-          background: linear-gradient(180deg, transparent, #06b6d4, #3b82f6, #06b6d4, transparent);
-          box-shadow: 0 0 30px 8px rgba(6,182,212,0.4), 0 0 80px 20px rgba(59,130,246,0.2);
-          animation: glowPulse 3s ease-in-out infinite 1.5s;
-        }
-        /* Corner glow orbs */
-        .dw-corner {
-          position: absolute; width: 120px; height: 120px; border-radius: 50%;
-          background: radial-gradient(circle, rgba(59,130,246,0.5), transparent 70%);
-          animation: cornerGlowPulse 4s ease-in-out infinite;
+        .gemini-border-container {
+          position: absolute;
+          inset: 0;
           pointer-events: none;
+          z-index: 1;
         }
-        .dw-corner-tl { top: -40px; left: -40px; animation-delay: 0s; }
-        .dw-corner-tr { top: -40px; right: -40px; animation-delay: 1s; }
-        .dw-corner-bl { bottom: -40px; left: -40px; animation-delay: 2s; }
-        .dw-corner-br { bottom: -40px; right: -40px; animation-delay: 0.5s; }
+        .gemini-glow-border {
+          position: absolute;
+          inset: 0;
+          padding: 3.5px; /* thin 3.5px ribbon of light */
+          background: linear-gradient(
+            270deg,
+            #3b82f6, /* twilight blue */
+            #8b5cf6, /* royal purple */
+            #ec4899, /* pink */
+            #fbbf24, /* warm yellow */
+            #10b981, /* emerald green */
+            #ef4444, /* bright red */
+            #3b82f6
+          );
+          background-size: 300% 300%;
+          animation: geminiShift 8s ease-in-out infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+        }
+        .gemini-glow-blur {
+          position: absolute;
+          inset: 0;
+          padding: 3.5px;
+          background: linear-gradient(
+            270deg,
+            #3b82f6,
+            #8b5cf6,
+            #ec4899,
+            #fbbf24,
+            #10b981,
+            #ef4444,
+            #3b82f6
+          );
+          background-size: 300% 300%;
+          animation: geminiShift 8s ease-in-out infinite, pulseGlow 4s ease-in-out infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          filter: blur(10px);
+          transform: scale(1.005);
+        }
         /* Ambient background glow */
+        @keyframes glowPulseSlow {
+          0%, 100% { opacity: 0.15; }
+          50% { opacity: 0.35; }
+        }
         .dw-ambient {
           position: absolute; border-radius: 50%; filter: blur(100px); pointer-events: none;
-          animation: glowPulseSlow 5s ease-in-out infinite;
+          animation: glowPulseSlow 6s ease-in-out infinite;
         }
       `}</style>
 
-      {/* ── Glowing edges ── */}
-      <div className="dw-glow-top" />
-      <div className="dw-glow-bottom" />
-      <div className="dw-glow-left" />
-      <div className="dw-glow-right" />
-
-      {/* ── Corner orbs ── */}
-      <div className="dw-corner dw-corner-tl" />
-      <div className="dw-corner dw-corner-tr" />
-      <div className="dw-corner dw-corner-bl" />
-      <div className="dw-corner dw-corner-br" />
+      {/* ── Google Gemini Edge Glow ── */}
+      <div className="gemini-border-container">
+        <div className="gemini-glow-border" />
+        <div className="gemini-glow-blur" />
+      </div>
 
       {/* ── Ambient background glow ── */}
       <div className="dw-ambient" style={{
         top: '20%', left: '10%', width: 300, height: 300,
-        background: 'radial-gradient(circle, rgba(59,130,246,0.12), transparent 70%)',
+        background: 'radial-gradient(circle, rgba(59,130,246,0.1), transparent 70%)',
       }} />
       <div className="dw-ambient" style={{
         bottom: '15%', right: '8%', width: 350, height: 350,
-        background: 'radial-gradient(circle, rgba(6,182,212,0.1), transparent 70%)',
-        animationDelay: '2.5s',
+        background: 'radial-gradient(circle, rgba(139,92,246,0.08), transparent 70%)',
+        animationDelay: '2s',
       }} />
 
       {/* ── Greeting text ── */}
