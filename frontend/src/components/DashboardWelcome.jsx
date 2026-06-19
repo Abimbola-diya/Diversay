@@ -93,8 +93,8 @@ export default function DashboardWelcome({ userName, onComplete }) {
   // ── Main animation sequencer ────────────────────────────────────────────
   useEffect(() => {
     const timers = []
-    // 0. Transition from multi-color electron glow to blue glow after 2 seconds
-    timers.push(setTimeout(() => setShowBlueGlow(true), 2000))
+    // 0. Transition from multi-color electron glow to blue glow after 3.5 seconds
+    timers.push(setTimeout(() => setShowBlueGlow(true), 3500))
 
     // 1. After glow warmup → start typing
     timers.push(setTimeout(() => setPhase('typing'), TYPE_DELAY))
