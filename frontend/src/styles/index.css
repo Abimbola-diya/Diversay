@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  transition-property: color, border-color, outline-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+body {
+  @apply antialiased;
+}
+
+/* Custom styles to prevent browser autofill from changing input background to white */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #1f2937 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Floating animation for pills */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-15px);
+  }
+}
+
+.float-pill {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Spinning animation for the I - full 360° rotation with breaks */
+@keyframes spinI {
+  0% {
+    transform: rotateZ(0deg);
+  }
+  20% {
+    transform: rotateZ(90deg);
+  }
+  35% {
+    transform: rotateZ(90deg);
+  }
+  55% {
+    transform: rotateZ(270deg);
+  }
+  70% {
+    transform: rotateZ(270deg);
+  }
+  85% {
+    transform: rotateZ(360deg);
+  }
+  100% {
+    transform: rotateZ(360deg);
+  }
+}
+
+.spin-i {
+  display: inline-block;
+  animation: spinI 8s ease-in-out infinite;
+  transform-origin: center;
+}
