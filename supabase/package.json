@@ -1,0 +1,11 @@
+{
+  "name": "diversay-supabase-functions",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "echo \"No lint configured for Supabase functions\""
+  },
+  "dependencies": {
+    "@supabase/server": "^1.1.0"
+  }
+}

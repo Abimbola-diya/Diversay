@@ -60,7 +60,7 @@ npm run build
 
 ## Environment Variables
 
-Create a `.env` file (already made):
+Use the repo root `.env` file:
 ```
 VITE_API_URL=http://localhost:8000
 ```

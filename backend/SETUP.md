@@ -30,7 +30,7 @@
    source venv/bin/activate
    ```
 
-2. Update `.env` with your PostgreSQL database URL:
+2. Update the repo root `.env` with your PostgreSQL database URL:
    ```
    DATABASE_URL=postgresql://user:password@localhost:5432/diversay_logistics
    ```
