@@ -124,18 +124,20 @@ export default function OrdersTable() {
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-      {/* Inline styles for the uniform electron border drawing animation */}
+      {/* Inline styles for the uniform electron border drawing animation with optimized performance */}
       <style>{`
         @keyframes border-draw {
           from {
-            stroke-dashoffset: 100%;
+            stroke-dashoffset: 100;
           }
           to {
-            stroke-dashoffset: 0%;
+            stroke-dashoffset: 0;
           }
         }
-        .animate-border-draw {
-          animation: border-draw 8s linear infinite;
+        .animate-border-draw-input {
+          animation: border-draw 6s linear infinite;
+          will-change: stroke-dashoffset;
+          transform: translate3d(0, 0, 0);
         }
       `}</style>
 
@@ -166,7 +168,7 @@ export default function OrdersTable() {
                   strokeWidth="2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="blur-[2px] opacity-30 animate-border-draw"
+                  className="blur-[2px] opacity-30 animate-border-draw-input"
                 />
                 <rect
                   x="0"
@@ -179,7 +181,7 @@ export default function OrdersTable() {
                   strokeWidth="1.2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="opacity-100 animate-border-draw"
+                  className="opacity-100 animate-border-draw-input"
                 />
               </svg>
             </div>
@@ -213,7 +215,7 @@ export default function OrdersTable() {
                   strokeWidth="2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="blur-[2px] opacity-30 animate-border-draw"
+                  className="blur-[2px] opacity-30 animate-border-draw-input"
                 />
                 <rect
                   x="0"
@@ -226,7 +228,7 @@ export default function OrdersTable() {
                   strokeWidth="1.2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="opacity-100 animate-border-draw"
+                  className="opacity-100 animate-border-draw-input"
                 />
               </svg>
             </div>
@@ -264,7 +266,7 @@ export default function OrdersTable() {
                   strokeWidth="2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="blur-[2px] opacity-30 animate-border-draw"
+                  className="blur-[2px] opacity-30 animate-border-draw-input"
                 />
                 <rect
                   x="0"
@@ -277,7 +279,7 @@ export default function OrdersTable() {
                   strokeWidth="1.2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="opacity-100 animate-border-draw"
+                  className="opacity-100 animate-border-draw-input"
                 />
               </svg>
             </div>
@@ -311,7 +313,7 @@ export default function OrdersTable() {
                   strokeWidth="2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="blur-[2px] opacity-30 animate-border-draw"
+                  className="blur-[2px] opacity-30 animate-border-draw-input"
                 />
                 <rect
                   x="0"
@@ -324,7 +326,7 @@ export default function OrdersTable() {
                   strokeWidth="1.2"
                   pathLength="100"
                   strokeDasharray="30 70"
-                  className="opacity-100 animate-border-draw"
+                  className="opacity-100 animate-border-draw-input"
                 />
               </svg>
             </div>

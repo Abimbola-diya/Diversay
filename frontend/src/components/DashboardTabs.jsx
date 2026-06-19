@@ -10,10 +10,33 @@ export default function DashboardTabs() {
   const [scheduledDeliveries, setScheduledDeliveries] = useState([])
   const [pendingIssues, setPendingIssues] = useState([])
   const [loading, setLoading] = useState(true)
+  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 })
+  const tabsRef = React.useRef({})
 
   useEffect(() => {
     fetchTabData()
   }, [])
+
+  useEffect(() => {
+    const updateIndicator = () => {
+      const activeTabEl = tabsRef.current[activeTab]
+      if (activeTabEl) {
+        setIndicatorStyle({
+          left: activeTabEl.offsetLeft,
+          width: activeTabEl.offsetWidth
+        })
+      }
+    }
+
+    // Wait a brief tick for layout to complete
+    const timer = setTimeout(updateIndicator, 50)
+
+    window.addEventListener('resize', updateIndicator)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('resize', updateIndicator)
+    }
+  }, [activeTab, loading, notifications, activities, scheduledDeliveries, pendingIssues])
 
   const fetchTabData = async () => {
     try {
@@ -248,16 +271,17 @@ export default function DashboardTabs() {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
       {/* Tab Headers */}
-      <div className="flex border-b border-zinc-800 overflow-x-auto">
+      <div className="flex border-b border-zinc-800 overflow-x-auto relative scrollbar-none">
         {tabs.map(tab => {
           const Icon = tab.icon
           return (
             <button
               key={tab.id}
+              ref={el => tabsRef.current[tab.id] = el}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-6 py-4 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id
-                  ? 'border-white text-white'
-                  : 'border-transparent text-zinc-400 hover:text-white'
+              className={`flex items-center gap-2 px-6 py-4 font-medium text-sm whitespace-nowrap transition-colors relative z-10 ${activeTab === tab.id
+                  ? 'text-white'
+                  : 'text-zinc-400 hover:text-white'
                 }`}
             >
               <Icon size={18} />
@@ -270,6 +294,15 @@ export default function DashboardTabs() {
             </button>
           )
         })}
+
+        {/* Sliding Indicator */}
+        <div
+          className="absolute bottom-0 h-[2px] bg-white transition-all duration-500 ease-out z-20"
+          style={{
+            left: `${indicatorStyle.left}px`,
+            width: `${indicatorStyle.width}px`
+          }}
+        />
       </div>
 
       {/* Tab Content */}

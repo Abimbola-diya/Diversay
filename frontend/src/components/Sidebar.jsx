@@ -29,7 +29,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
 
   return (
     <>
-      {/* Inline styles for the uniform electron border drawing animation with normalized pathLength */}
+      {/* Inline styles for the uniform electron border drawing animation with optimized performance */}
       <style>{`
         @keyframes border-draw {
           from {
@@ -39,8 +39,10 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
             stroke-dashoffset: 0;
           }
         }
-        .animate-border-draw {
-          animation: border-draw 8s linear infinite;
+        .animate-border-draw-sidebar {
+          animation: border-draw 3s linear infinite;
+          will-change: stroke-dashoffset;
+          transform: translate3d(0, 0, 0);
         }
       `}</style>
 
@@ -72,7 +74,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                     strokeWidth="2"
                     pathLength="100"
                     strokeDasharray="30 70"
-                    className="blur-[2px] opacity-30 animate-border-draw"
+                    className="blur-[2px] opacity-30 animate-border-draw-sidebar"
                   />
                   <rect
                     x="0"
@@ -85,7 +87,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                     strokeWidth="1.2"
                     pathLength="100"
                     strokeDasharray="30 70"
-                    className="opacity-100 animate-border-draw"
+                    className="opacity-100 animate-border-draw-sidebar"
                   />
                 </svg>
               </div>
@@ -132,7 +134,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                             strokeWidth="2"
                             pathLength="100"
                             strokeDasharray="30 70"
-                            className="blur-[2px] opacity-30 animate-border-draw"
+                            className="blur-[2px] opacity-30 animate-border-draw-sidebar"
                           />
                           <rect
                             x="0"
@@ -145,15 +147,12 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                             strokeWidth="1.2"
                             pathLength="100"
                             strokeDasharray="30 70"
-                            className="opacity-100 animate-border-draw"
+                            className="opacity-100 animate-border-draw-sidebar"
                           />
                         </svg>
                       </div>
 
-                      {/* Subtle background highlight for active state when NOT hovered */}
-                      {isActive && (
-                        <div className="absolute inset-0 bg-white/5 rounded-xl -z-10 pointer-events-none" />
-                      )}
+
 
                       <item.icon size={iconSize} className={`${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'} z-10`} />
                       {isOpen && <span className="truncate z-10">{item.label}</span>}
@@ -257,7 +256,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                       strokeWidth="2"
                       pathLength="100"
                       strokeDasharray="30 70"
-                      className="blur-[2px] opacity-30 animate-border-draw"
+                      className="blur-[2px] opacity-30 animate-border-draw-sidebar"
                     />
                     <rect
                       x="0"
@@ -270,7 +269,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                       strokeWidth="1.2"
                       pathLength="100"
                       strokeDasharray="30 70"
-                      className="opacity-100 animate-border-draw"
+                      className="opacity-100 animate-border-draw-sidebar"
                     />
                   </svg>
                 </div>
@@ -308,7 +307,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                       strokeWidth="2"
                       pathLength="100"
                       strokeDasharray="30 70"
-                      className="blur-[2px] opacity-30 animate-border-draw"
+                      className="blur-[2px] opacity-30 animate-border-draw-sidebar"
                     />
                     <rect
                       x="0"
@@ -321,7 +320,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                       strokeWidth="1.2"
                       pathLength="100"
                       strokeDasharray="30 70"
-                      className="opacity-100 animate-border-draw"
+                      className="opacity-100 animate-border-draw-sidebar"
                     />
                   </svg>
                 </div>
