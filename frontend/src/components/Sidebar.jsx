@@ -5,7 +5,7 @@ import { Menu, X, LayoutDashboard, Package, Users, BarChart3, LogOut, CheckSquar
 
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true)
-  const { logout, user } = useAuth()
+  const { logout, user, requestAdmin } = useAuth()
   const navigate = useNavigate()
 
   const handleLogout = async () => {
@@ -62,6 +62,35 @@ export default function Sidebar() {
             ))}
           </ul>
         </nav>
+
+        {/* Request Admin Access for Viewers */}
+        {isOpen && user?.role === 'viewer' && (
+          <div className="mx-4 my-2 p-4 bg-slate-800/40 rounded-xl border border-slate-800/80">
+            <p className="text-xs text-slate-400 mb-2 leading-relaxed">
+              You are in <strong>Read-Only</strong> mode. Request admin access to edit and manage data.
+            </p>
+            {user.requesting_admin ? (
+              <div className="w-full text-center py-2 px-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs font-semibold text-amber-400 flex items-center justify-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                Access Pending Approval
+              </div>
+            ) : (
+              <button
+                onClick={async () => {
+                  const res = await requestAdmin();
+                  if (res.success) {
+                    alert("Admin request submitted successfully!");
+                  } else {
+                    alert(res.error || "Failed to submit request.");
+                  }
+                }}
+                className="w-full py-2 px-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium text-xs rounded-lg transition-all shadow-md shadow-cyan-500/10 hover:shadow-cyan-500/20 active:scale-[0.98]"
+              >
+                Request Admin Access
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Logout Button */}
         <div className="border-t border-slate-800 p-3 mb-4">

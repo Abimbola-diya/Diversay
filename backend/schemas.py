@@ -20,6 +20,7 @@ class UserResponse(BaseModel):
     role: UserRole
     is_active: bool
     created_at: datetime
+    requesting_admin: bool = False
     
     class Config:
         from_attributes = True

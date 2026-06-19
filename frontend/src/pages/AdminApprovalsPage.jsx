@@ -91,9 +91,9 @@ export default function AdminApprovalsPage() {
     <div className="min-h-screen bg-slate-100 py-8 px-4">
       {/* Header */}
       <div className="max-w-4xl mx-auto mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">User Approvals</h1>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Requests</h1>
         <p className="text-slate-600">
-          Review and approve pending user signup requests
+          Review and approve pending requests for admin write access
         </p>
       </div>
 
@@ -121,7 +121,7 @@ export default function AdminApprovalsPage() {
             </div>
             <h3 className="text-xl font-semibold text-slate-900 mb-1">All Caught Up!</h3>
             <p className="text-slate-600">
-              No pending user approvals at the moment.
+              No pending admin promotion requests at the moment.
             </p>
           </div>
         ) : (
@@ -173,7 +173,7 @@ export default function AdminApprovalsPage() {
       {pendingUsers.length > 0 && (
         <div className="max-w-4xl mx-auto mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-800">
-            <span className="font-semibold">{pendingUsers.length}</span> pending user{pendingUsers.length !== 1 ? 's' : ''} awaiting approval
+            <span className="font-semibold">{pendingUsers.length}</span> pending admin request{pendingUsers.length !== 1 ? 's' : ''} awaiting approval
           </p>
         </div>
       )}

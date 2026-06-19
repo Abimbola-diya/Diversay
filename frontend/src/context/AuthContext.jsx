@@ -70,6 +70,16 @@ export function AuthProvider({ children }) {
     delete api.defaults.headers.common['Authorization']
   }
 
+  const requestAdmin = async () => {
+    try {
+      await api.post('/auth/request-admin')
+      await fetchCurrentUser()
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error.response?.data?.detail || 'Request failed' }
+    }
+  }
+
   const isAdmin = user?.role === 'admin'
   const isAuthenticated = !!token && !!user
 
@@ -84,6 +94,7 @@ export function AuthProvider({ children }) {
         login,
         signup,
         logout,
+        requestAdmin,
       }}
     >
       {children}

@@ -5,7 +5,7 @@ import { CheckCircle2, Eye, EyeOff } from 'lucide-react'
 
 const HEADING_TEXT = "New user? Sign up here"
 const SUCCESS_TEXT = "Successfully signed up"
-const PENDING_TEXT = "Pending admin approval"
+const PENDING_TEXT = "Ready to access your dashboard"
 
 const COLORS = [
   { textClass: 'text-teal-400',   hex: '#2dd4bf' }, // Teal

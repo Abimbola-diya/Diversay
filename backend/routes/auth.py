@@ -22,7 +22,7 @@ def login(user_login: UserLogin, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is pending admin approval. Please wait for an administrator to approve your request."
+            detail="Your account has been deactivated. Please contact an administrator."
         )
     
     access_token = create_access_token(data={"sub": user.id})
@@ -36,13 +36,14 @@ def login(user_login: UserLogin, db: Session = Depends(get_db)):
             "full_name": user.full_name,
             "role": user.role,
             "is_active": user.is_active,
-            "created_at": user.created_at
+            "created_at": user.created_at,
+            "requesting_admin": user.requesting_admin
         }
     }
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
 def signup(user_create: UserCreate, db: Session = Depends(get_db)):
-    """Register new viewer user (requires admin approval)."""
+    """Register new viewer user (active immediately, read-only)."""
     existing_user = db.query(User).filter(User.email == user_create.email).first()
     if existing_user:
         raise HTTPException(
@@ -55,7 +56,8 @@ def signup(user_create: UserCreate, db: Session = Depends(get_db)):
         password_hash=hash_password(user_create.password),
         full_name=user_create.full_name,
         role=UserRole.VIEWER,
-        is_active=False  # Account created but inactive until admin approves
+        is_active=True,  # Active by default so they can log in and view
+        requesting_admin=False
     )
     
     db.add(new_user)
@@ -63,14 +65,15 @@ def signup(user_create: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     
     return {
-        "message": "Signup successful! Your account is pending admin approval.",
+        "message": "Signup successful! You can now log in.",
         "user": {
             "id": new_user.id,
             "email": new_user.email,
             "full_name": new_user.full_name,
             "role": new_user.role,
             "is_active": new_user.is_active,
-            "created_at": new_user.created_at
+            "created_at": new_user.created_at,
+            "requesting_admin": new_user.requesting_admin
         }
     }
 
@@ -83,7 +86,8 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
         "full_name": current_user.full_name,
         "role": current_user.role,
         "is_active": current_user.is_active,
-        "created_at": current_user.created_at
+        "created_at": current_user.created_at,
+        "requesting_admin": current_user.requesting_admin
     }
 
 @router.patch("/me", response_model=UserResponse)
@@ -101,8 +105,19 @@ def update_user_info(current_user: User = Depends(get_current_user), update_data
         "full_name": current_user.full_name,
         "role": current_user.role,
         "is_active": current_user.is_active,
-        "created_at": current_user.created_at
+        "created_at": current_user.created_at,
+        "requesting_admin": current_user.requesting_admin
     }
+
+@router.post("/request-admin")
+def request_admin_access(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Request promotion to Admin (write access)."""
+    if current_user.role == UserRole.ADMIN:
+        return {"message": "You are already an admin."}
+    
+    current_user.requesting_admin = True
+    db.commit()
+    return {"message": "Request for admin access submitted successfully.", "requesting_admin": True}
 
 @router.post("/password-reset-request")
 def request_password_reset(request: PasswordResetRequest, db: Session = Depends(get_db)):
@@ -131,14 +146,14 @@ def logout():
 
 @router.get("/admin/pending-approvals")
 def get_pending_approvals(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get list of pending user approvals (admin only)."""
+    """Get list of users requesting admin access (admin only)."""
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can view pending approvals"
         )
     
-    pending_users = db.query(User).filter(User.is_active == False).all()
+    pending_users = db.query(User).filter(User.requesting_admin == True).all()
     
     return {
         "total": len(pending_users),
@@ -148,7 +163,8 @@ def get_pending_approvals(current_user: User = Depends(get_current_user), db: Se
                 "email": user.email,
                 "full_name": user.full_name,
                 "role": user.role,
-                "created_at": user.created_at
+                "created_at": user.created_at,
+                "requesting_admin": user.requesting_admin
             }
             for user in pending_users
         ]
@@ -156,7 +172,7 @@ def get_pending_approvals(current_user: User = Depends(get_current_user), db: Se
 
 @router.patch("/admin/approve-user/{user_id}", response_model=UserResponse)
 def approve_user(user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Approve a pending user (admin only)."""
+    """Approve a pending admin request (admin only)."""
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -171,11 +187,10 @@ def approve_user(user_id: int, current_user: User = Depends(get_current_user), d
             detail="User not found"
         )
     
-    user.is_active = True
+    user.role = UserRole.ADMIN
+    user.requesting_admin = False
     db.commit()
     db.refresh(user)
-    
-    # TODO: Send approval email to user
     
     return {
         "id": user.id,
@@ -183,12 +198,13 @@ def approve_user(user_id: int, current_user: User = Depends(get_current_user), d
         "full_name": user.full_name,
         "role": user.role,
         "is_active": user.is_active,
-        "created_at": user.created_at
+        "created_at": user.created_at,
+        "requesting_admin": user.requesting_admin
     }
 
 @router.patch("/admin/reject-user/{user_id}")
 def reject_user(user_id: int, reason: str = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Reject and delete a pending user (admin only)."""
+    """Reject a pending admin request (admin only)."""
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -203,9 +219,7 @@ def reject_user(user_id: int, reason: str = None, current_user: User = Depends(g
             detail="User not found"
         )
     
-    db.delete(user)
+    user.requesting_admin = False
     db.commit()
     
-    # TODO: Send rejection email to user
-    
-    return {"message": f"User {user.email} has been rejected and deleted."}
+    return {"message": f"Admin request for {user.email} has been rejected."}

@@ -33,8 +33,8 @@ export default function DashboardTabs() {
         ...pendingUsers.map(user => ({
           id: `approval-${user.id}`,
           type: 'approval',
-          title: 'Pending User Approval',
-          message: `${user.full_name} (${user.email}) is waiting for approval`,
+          title: 'Pending Admin Request',
+          message: `${user.full_name} (${user.email}) is requesting admin access`,
           timestamp: user.created_at,
           priority: 'high'
         })),
