@@ -9,6 +9,54 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 from sqlalchemy import text
+from database import SessionLocal
+from models import User, UserRole
+from auth import hash_password
+
+def seed_admin_user():
+    db = SessionLocal()
+    try:
+        admin_email = "diversaysolutions@gmail.com"
+        admin_user = db.query(User).filter(User.email == admin_email).first()
+        if not admin_user:
+            logger.info("Seeding permanent admin user...")
+            new_admin = User(
+                email=admin_email,
+                full_name="Grace",
+                password_hash=hash_password("diversaysolutions@2025"),
+                role=UserRole.ADMIN,
+                is_active=True,
+                requesting_admin=False
+            )
+            db.add(new_admin)
+            db.commit()
+            logger.info("Permanent admin user seeded successfully!")
+        else:
+            # Ensure they are an Admin, Active, and details match requested values
+            updated = False
+            if admin_user.full_name != "Grace":
+                admin_user.full_name = "Grace"
+                updated = True
+            if admin_user.role != UserRole.ADMIN:
+                admin_user.role = UserRole.ADMIN
+                updated = True
+            if not admin_user.is_active:
+                admin_user.is_active = True
+                updated = True
+            
+            # Verify and update password hash if it doesn't match
+            from auth import verify_password
+            if not verify_password("diversaysolutions@2025", admin_user.password_hash):
+                admin_user.password_hash = hash_password("diversaysolutions@2025")
+                updated = True
+                
+            if updated:
+                db.commit()
+                logger.info("Permanent admin user details updated/restored.")
+    except Exception as e:
+        logger.error(f"Error seeding admin user: {e}")
+    finally:
+        db.close()
 
 # Create tables (with error handling in case DB is unavailable)
 try:
@@ -16,6 +64,7 @@ try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS requesting_admin BOOLEAN DEFAULT FALSE;"))
         conn.commit()
+    seed_admin_user()
 except Exception as e:
     logger.warning(f"Could not create tables or run migrations on startup: {e}. Database may be unavailable.")
 
