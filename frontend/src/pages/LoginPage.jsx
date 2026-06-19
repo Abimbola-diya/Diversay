@@ -178,7 +178,7 @@ export default function LoginPage() {
 
         // Navigate to dashboard for admin, orders for viewer
         const destination = userRole === 'admin' ? '/dashboard' : '/orders'
-        navigate(destination)
+        navigate(destination, { state: { fromLogin: true } })
       } else {
         // Check for pending approval error
         if (result.error?.includes('pending admin approval')) {

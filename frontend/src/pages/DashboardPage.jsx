@@ -1,15 +1,22 @@
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import Sidebar from '../components/Sidebar'
 import TopBar from '../components/TopBar'
 import DashboardMetricsCards from '../components/DashboardMetricsCards'
 import DashboardTabs from '../components/DashboardTabs'
 import OrdersTable from '../components/OrdersTable'
+import DashboardWelcome from '../components/DashboardWelcome'
 
 export default function DashboardPage() {
   const { user, loading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Show welcome animation only on fresh login (not on page refreshes)
+  const cameFromLogin = location.state?.fromLogin === true
+  const [showWelcome, setShowWelcome] = useState(cameFromLogin)
+  const [contentVisible, setContentVisible] = useState(!cameFromLogin)
 
   useEffect(() => {
     // Redirect if not authenticated
@@ -17,6 +24,19 @@ export default function DashboardPage() {
       navigate('/login')
     }
   }, [user, loading, navigate])
+
+  // Clean up the state so refreshing the page won't replay the animation
+  useEffect(() => {
+    if (cameFromLogin) {
+      window.history.replaceState({}, '')
+    }
+  }, [cameFromLogin])
+
+  const handleWelcomeComplete = () => {
+    setShowWelcome(false)
+    // Small delay so the overlay fades before content pops in
+    setTimeout(() => setContentVisible(true), 100)
+  }
 
   if (loading) {
     return (
@@ -31,39 +51,55 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      {/* Sidebar */}
-      <Sidebar />
+      {/* Welcome animation overlay */}
+      {showWelcome && (
+        <DashboardWelcome
+          userName={user?.full_name}
+          onComplete={handleWelcomeComplete}
+        />
+      )}
 
-      {/* Main Content */}
-      <div className="lg:ml-0 pt-16 md:pt-0">
-        {/* Top Bar */}
-        <TopBar />
+      {/* Dashboard content — fades in after welcome */}
+      <div
+        style={{
+          opacity: contentVisible ? 1 : 0,
+          transition: 'opacity 0.6s ease-in',
+        }}
+      >
+        {/* Sidebar */}
+        <Sidebar />
 
-        {/* Content */}
-        <main className="p-8 max-w-7xl mx-auto">
-          {/* Dashboard Title */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
-            <p className="text-slate-400">
-              Overview of all logistics operations and order management
-            </p>
-          </div>
+        {/* Main Content */}
+        <div className="lg:ml-0 pt-16 md:pt-0">
+          {/* Top Bar */}
+          <TopBar />
 
-          {/* Metrics Cards */}
-          <div className="mb-8">
-            <DashboardMetricsCards />
-          </div>
+          {/* Content */}
+          <main className="p-8 max-w-7xl mx-auto">
+            {/* Dashboard Title */}
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
+              <p className="text-slate-400">
+                Overview of all logistics operations and order management
+              </p>
+            </div>
 
-          {/* Tabs Section */}
-          <div className="mb-8">
-            <DashboardTabs />
-          </div>
+            {/* Metrics Cards */}
+            <div className="mb-8">
+              <DashboardMetricsCards />
+            </div>
 
-          {/* Orders Table */}
-          <div className="mb-8">
-            <OrdersTable />
-          </div>
-        </main>
+            {/* Tabs Section */}
+            <div className="mb-8">
+              <DashboardTabs />
+            </div>
+
+            {/* Orders Table */}
+            <div className="mb-8">
+              <OrdersTable />
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   )
