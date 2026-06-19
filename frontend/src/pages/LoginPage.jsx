@@ -313,7 +313,10 @@ export default function LoginPage() {
 
                   {/* Error message */}
                   {error && (
-                    <p className="text-red-400 text-xs">{error}</p>
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-200 px-4 py-3 rounded-lg text-sm flex items-start gap-2.5">
+                      <span className="text-red-400 font-bold shrink-0 mt-0.5">⚠️</span>
+                      <p className="font-medium leading-relaxed text-left">{error}</p>
+                    </div>
                   )}
 
                   {/* Continue with email button */}
