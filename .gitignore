@@ -1,7 +1,70 @@
+# Core / OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables and secrets
 .env
-**/.env
-**/node_modules
-dist
-**/dist
-*.pyc
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+project_env/
+
+# Python Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python caches and bytecode
 __pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+.tox/
+htmlcov/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node / Frontend dependencies
+node_modules/
+**/node_modules/
+
+# Frontend build outputs
+dist/
+**/dist/
+build/
+
+# Logs
+*.log
+server.log
+logs/
+**/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDEs and Editors
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.project
+.classpath
+.settings/

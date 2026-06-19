@@ -1,7 +1,0 @@
-project_id = "ztobngcnibkkmwaiitlh"
-
-[functions.customers]
-verify_jwt = true
-
-[functions.admin-products]
-verify_jwt = false
