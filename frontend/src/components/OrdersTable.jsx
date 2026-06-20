@@ -23,6 +23,16 @@ export default function OrdersTable() {
     fetchOrders()
   }, [page, searchTerm, filterState, filterStatus, filterProductType, dateRange])
 
+  useEffect(() => {
+    const handleOrderCreated = () => {
+      fetchOrders()
+    }
+    window.addEventListener('order-created', handleOrderCreated)
+    return () => {
+      window.removeEventListener('order-created', handleOrderCreated)
+    }
+  }, [])
+
   const fetchOrders = async () => {
     try {
       setLoading(true)

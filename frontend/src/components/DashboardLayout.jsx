@@ -16,6 +16,9 @@ export default function DashboardLayout() {
         {/* Sidebar component */}
         <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
 
+        {/* Spacer to push content since sidebar is fixed on desktop */}
+        <div className={`hidden md:block transition-all duration-300 flex-shrink-0 ${sidebarOpen ? 'w-48' : 'w-16'}`} />
+
         {/* Main Content Area */}
         <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
           <Outlet />

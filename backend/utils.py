@@ -46,22 +46,66 @@ def generate_order_number(db: Session) -> str:
     order_number = f"DSL-{year}-{seq:04d}"
     return order_number
 
-def fuzzy_search_customers(query: str, customers: List[dict], threshold: float = 0.6) -> List[dict]:
-    """Fuzzy search customers by name."""
+def _trigram_similarity(a: str, b: str) -> float:
+    """Calculate trigram (3-gram) overlap between two strings."""
+    if len(a) < 3 or len(b) < 3:
+        # Fall back to bigrams for short strings
+        n = 2
+    else:
+        n = 3
+    
+    def ngrams(s, n):
+        return set(s[i:i+n] for i in range(len(s) - n + 1))
+    
+    grams_a = ngrams(a, n)
+    grams_b = ngrams(b, n)
+    
+    if not grams_a or not grams_b:
+        return 0.0
+    
+    intersection = grams_a & grams_b
+    union = grams_a | grams_b
+    return len(intersection) / len(union)  # Jaccard similarity
+
+
+def fuzzy_search_customers(query: str, customers: List[dict], threshold: float = 0.15) -> List[dict]:
+    """
+    Smart search customers by name using multi-signal scoring:
+      1. Exact prefix match (name starts with query)        → +5.0
+      2. Any word in the name starts with the query          → +3.0
+      3. Substring containment (query found inside name)     → +2.0
+      4. Trigram similarity for typo tolerance                → 0.0–1.0
+    Results are sorted by total score descending.
+    """
     if not query:
         return []
     
-    query_lower = query.lower()
+    query_lower = query.lower().strip()
     results = []
     
     for customer in customers:
         name_lower = customer['name'].lower()
+        score = 0.0
+        
+        # Signal 1: Name starts with the query (strongest signal)
+        if name_lower.startswith(query_lower):
+            score += 5.0
+        
+        # Signal 2: Any word in the name starts with the query
+        words = name_lower.split()
+        if any(w.startswith(query_lower) for w in words):
+            score += 3.0
+        
+        # Signal 3: Substring containment
         if query_lower in name_lower:
-            results.append((customer, 1.0))
-        else:
-            ratio = SequenceMatcher(None, query_lower, name_lower).ratio()
-            if ratio >= threshold:
-                results.append((customer, ratio))
+            score += 2.0
+        
+        # Signal 4: Trigram similarity (catches typos)
+        tri_sim = _trigram_similarity(query_lower, name_lower)
+        score += tri_sim
+        
+        if score >= threshold:
+            results.append((customer, score))
     
     results.sort(key=lambda x: (-x[1], x[0]['name']))
     return [r[0] for r in results]

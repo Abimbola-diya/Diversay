@@ -58,6 +58,41 @@ def seed_admin_user():
     finally:
         db.close()
 
+def seed_products():
+    from models import Product, ProductCategory, UnitType
+    db = SessionLocal()
+    try:
+        products_list = [
+            "Quinrocin", "Megadox", "Kolin plus", "Stodi", "Phytocee", "Zigbir", 
+            "Ds-viracid-s", "Terminator- iii", "Biokleen", "Wyldox", "Neodine", 
+            "Amprolium", "coxstop", "Divercipro", "Divercool-c", "DiverGen D", 
+            "Divermer", "Ds livorton", "Ds-ultr-tm plus", "Dsl biokleen", 
+            "Dsl citramax", "Dsl neodine", "gentylo", "levastar dewormer", 
+            "viracid", "zigbir liquid"
+        ]
+        
+        for name in products_list:
+            existing = db.query(Product).filter(
+                Product.name.ilike(name),
+                Product.is_deleted == False
+            ).first()
+            if not existing:
+                logger.info(f"Seeding product: {name}")
+                new_product = Product(
+                    name=name,
+                    category=ProductCategory.OTHER,
+                    default_unit=UnitType.CARTON,
+                    unit_price=0.0
+                )
+                db.add(new_product)
+        db.commit()
+        logger.info("Products seeded successfully!")
+    except Exception as e:
+        logger.error(f"Error seeding products: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 # Create tables (with error handling in case DB is unavailable)
 try:
     Base.metadata.create_all(bind=engine)
@@ -66,6 +101,7 @@ try:
         conn.execute(text("UPDATE users SET is_active = TRUE;"))
         conn.commit()
     seed_admin_user()
+    seed_products()
 except Exception as e:
     logger.warning(f"Could not create tables or run migrations on startup: {e}. Database may be unavailable.")
 

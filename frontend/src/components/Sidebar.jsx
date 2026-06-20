@@ -1,12 +1,15 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { LayoutDashboard, Package, Users, BarChart3, LogOut, CheckSquare, ShieldAlert, Columns } from 'lucide-react'
+import { LayoutDashboard, Package, Users, BarChart3, LogOut, CheckSquare, ShieldAlert, Columns, Plus } from 'lucide-react'
+import CreateOrderModal from './CreateOrderModal'
 
 export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }) {
   const [localIsOpen, setLocalIsOpen] = useState(false)
   const isOpen = propIsOpen !== undefined ? propIsOpen : localIsOpen
   const setIsOpen = propSetIsOpen !== undefined ? propSetIsOpen : setLocalIsOpen
+
+  const [isCreateOrderOpen, setIsCreateOrderOpen] = useState(false)
 
   const { logout, user, requestAdmin } = useAuth()
   const navigate = useNavigate()
@@ -25,7 +28,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
     user?.role === 'admin' && { label: 'Approvals', icon: CheckSquare, path: '/admin/approvals' }
   ].filter(Boolean)
 
-  const iconSize = isOpen ? 18 : 22
+  const iconSize = isOpen ? 16 : 18
 
   return (
     <>
@@ -48,16 +51,16 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
 
       {/* Sidebar container */}
       <div
-        className={`fixed left-0 top-[105px] h-[calc(100vh-105px)] bg-zinc-900 transition-all duration-300 z-40 flex flex-col justify-between md:sticky md:top-[105px]
+        className={`fixed left-0 top-[105px] h-[calc(100vh-105px)] bg-zinc-900 transition-all duration-300 z-40 flex flex-col justify-between
           ${isOpen ? 'w-48' : 'w-0 overflow-hidden md:w-16 md:overflow-visible'}`}
       >
-        <div className="pt-10 pb-4 px-2 flex flex-col gap-4">
+        <div className="pt-[83px] pb-2 px-2 flex flex-col gap-4">
           {/* Toggle Button (Columns Icon) - Positioned at the very top of the sidebar list */}
           <div className="relative group">
             <button
               onClick={() => setIsOpen(!isOpen)}
               className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
-                ${isOpen ? 'px-3 py-2.5 gap-2.5 justify-start' : 'p-2.5 justify-center'}
+                ${isOpen ? 'px-3 py-2 gap-2.5 justify-start' : 'p-2 justify-center'}
                 text-zinc-400 hover:text-zinc-200`}
             >
               {/* Electron border glow on hover */}
@@ -104,9 +107,64 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
             )}
           </div>
 
+          {/* Create Order Button */}
+          <div className="relative group flex justify-center w-full">
+            <button
+              onClick={() => setIsCreateOrderOpen(true)}
+              className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
+                ${isOpen ? 'px-3 py-2 gap-2.5 justify-start' : 'p-2 justify-center'}
+                text-zinc-400 hover:text-zinc-200`}
+            >
+              {/* Electron border glow on hover */}
+              <div className="absolute inset-0 rounded-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0">
+                <svg className="absolute inset-0 w-full h-full rounded-xl" overflow="visible">
+                  <rect
+                    x="0"
+                    y="0"
+                    width="100%"
+                    height="100%"
+                    rx="12"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="2"
+                    pathLength="100"
+                    strokeDasharray="30 70"
+                    className="blur-[2px] opacity-30 animate-border-draw-sidebar"
+                  />
+                  <rect
+                    x="0"
+                    y="0"
+                    width="100%"
+                    height="100%"
+                    rx="12"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="1.2"
+                    pathLength="100"
+                    strokeDasharray="30 70"
+                    className="opacity-100 animate-border-draw-sidebar"
+                  />
+                </svg>
+              </div>
+
+              <div className={`rounded-full bg-zinc-800 border border-zinc-700/60 flex items-center justify-center group-hover:bg-zinc-700 group-hover:border-zinc-650 transition-all duration-200 flex-shrink-0
+                ${isOpen ? 'w-8 h-8' : 'w-10 h-10'}`}
+              >
+                <Plus size={18} className="text-zinc-200" />
+              </div>
+              {isOpen && <span className="truncate z-10 text-zinc-350 group-hover:text-white font-semibold">New Order</span>}
+            </button>
+
+            {!isOpen && (
+              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-900 border border-zinc-750 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg">
+                Create New Order
+              </div>
+            )}
+          </div>
+
           {/* Navigation Items */}
           <nav>
-            <ul className="space-y-2">
+            <ul className="space-y-4">
               {navItems.map((item) => {
                 const isActive = location.pathname === item.path
                 return (
@@ -117,7 +175,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                         if (window.innerWidth < 768) setIsOpen(false)
                       }}
                       className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
-                        ${isOpen ? 'px-3 pt-2.5 pb-3.5 gap-2.5 justify-start' : 'pt-2.5 pb-3.5 px-2.5 justify-center'}
+                        ${isOpen ? 'px-3 pt-1.5 pb-2.5 gap-2.5 justify-start' : 'pt-1.5 pb-2.5 px-2.5 justify-center'}
                         ${isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
                     >
                       {/* Electron border glow on hover */}
@@ -189,15 +247,15 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
         </div>
 
         {/* Bottom Panel */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
           {/* Request Admin Access for Viewers (Only when open) */}
           {isOpen && user?.role === 'viewer' && (
-            <div className="mx-2 my-1 p-3 bg-zinc-800/30 rounded-xl border border-zinc-800/80 animate-fadeIn">
-              <p className="text-[11px] text-zinc-400 mb-1.5 leading-relaxed">
+            <div className="mx-2 my-1 p-2 bg-zinc-800/30 rounded-xl border border-zinc-800/80 animate-fadeIn">
+              <p className="text-[11px] text-zinc-400 mb-1 leading-relaxed">
                 You are in <strong className="text-zinc-200">Read-Only</strong>. Request admin access.
               </p>
               {user.requesting_admin ? (
-                <div className="w-full text-center py-1.5 px-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-[10px] font-semibold text-amber-400 flex items-center justify-center gap-1.5">
+                <div className="w-full text-center py-1 px-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-[10px] font-semibold text-amber-400 flex items-center justify-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                   Pending
                 </div>
@@ -221,7 +279,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
 
           {/* Request Admin Icon for Viewers (Only when collapsed) */}
           {!isOpen && user?.role === 'viewer' && (
-            <div className="relative group px-2 mb-2">
+            <div className="relative group px-2 mb-1">
               <button
                 onClick={async () => {
                   if (user.requesting_admin) {
@@ -237,9 +295,9 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                     alert(res.error || "Failed to submit request.");
                   }
                 }}
-                className={`w-full flex items-center justify-center p-2.5 rounded-xl transition-all duration-200 font-medium relative z-10
-                  ${user.requesting_admin 
-                    ? 'text-amber-400' 
+                className={`w-full flex items-center justify-center p-2 rounded-xl transition-all duration-200 font-medium relative z-10
+                  ${user.requesting_admin
+                    ? 'text-amber-400'
                     : 'text-zinc-500 hover:text-cyan-400'}`}
               >
                 {/* Electron border glow on hover */}
@@ -285,12 +343,12 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
           )}
 
           {/* Logout Button */}
-          <div className="p-2 mb-4">
+          <div className="p-2 mb-2">
             <div className="relative group">
               <button
                 onClick={handleLogout}
                 className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
-                  ${isOpen ? 'px-3 py-2.5 gap-2.5 justify-start' : 'p-2.5 justify-center'}
+                  ${isOpen ? 'px-3 py-2 gap-2.5 justify-start' : 'p-2 justify-center'}
                   text-zinc-400 hover:text-red-400`}
               >
                 {/* Electron border glow on hover (red tinted for logout!) */}
@@ -347,6 +405,12 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
           onClick={() => setIsOpen(false)}
         />
       )}
+
+      {/* Create Order Modal */}
+      <CreateOrderModal
+        isOpen={isCreateOrderOpen}
+        onClose={() => setIsCreateOrderOpen(false)}
+      />
     </>
   )
 }
