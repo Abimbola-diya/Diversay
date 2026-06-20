@@ -94,6 +94,21 @@ def get_dashboard_metrics(
         for date, count in sorted(orders_30_days.items())
     ]
     
+    # Calculate 30 day volume and growth vs previous 30 days
+    sixty_days_ago = today_start - timedelta(days=60)
+    orders_current_30 = [o for o in all_orders if o.dispatch_time and o.dispatch_time >= thirty_days_ago]
+    total_orders_30_days = len(orders_current_30)
+    
+    orders_prev_30 = [o for o in all_orders if o.dispatch_time and sixty_days_ago <= o.dispatch_time < thirty_days_ago]
+    total_orders_prev_30_days = len(orders_prev_30)
+    
+    if total_orders_prev_30_days > 0:
+        orders_growth_percentage = ((total_orders_30_days - total_orders_prev_30_days) / total_orders_prev_30_days) * 100
+    elif total_orders_30_days > 0:
+        orders_growth_percentage = 100.0
+    else:
+        orders_growth_percentage = 0.0
+    
     return {
         "total_orders_today": total_orders_today,
         "in_transit_count": in_transit_count,
@@ -105,5 +120,7 @@ def get_dashboard_metrics(
         "on_time_percentage": round(on_time_percentage, 2),
         "late_percentage": round(late_percentage, 2),
         "top_5_states": top_5_states,
-        "orders_last_30_days": orders_last_30_days
+        "orders_last_30_days": orders_last_30_days,
+        "total_orders_30_days": total_orders_30_days,
+        "orders_growth_percentage": round(orders_growth_percentage, 2)
     }

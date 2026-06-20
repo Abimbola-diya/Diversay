@@ -11,28 +11,7 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
   if (filtered.length === 0) return null
 
   return (
-    <>
-      <style>{`
-        .custom-product-dropdown-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: #ffffffff #27272a;
-        }
-        .custom-product-dropdown-scroll::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-product-dropdown-scroll::-webkit-scrollbar-track {
-          background: #27272a;
-          border-radius: 0 12px 12px 0;
-        }
-        .custom-product-dropdown-scroll::-webkit-scrollbar-thumb {
-          background: #ef4444;
-          border-radius: 9999px;
-        }
-        .custom-product-dropdown-scroll::-webkit-scrollbar-thumb:hover {
-          background: #dc2626;
-        }
-      `}</style>
-      <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
         <ul className="divide-y divide-zinc-750">
         {filtered.map((product) => (
           <li key={product.id}>
@@ -47,7 +26,6 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
         ))}
       </ul>
     </div>
-    </>
   )
 }
 
@@ -67,6 +45,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [dispatchTime, setDispatchTime] = useState('')
   const [expectedDeliveryTime, setExpectedDeliveryTime] = useState('')
+  const [deliveryTimeError, setDeliveryTimeError] = useState('')
   const [driverName, setDriverName] = useState('')
   const [vehicleNumber, setVehicleNumber] = useState('')
   const [notes, setNotes] = useState('')
@@ -162,11 +141,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       return
     }
 
-    const dispatchDate = new Date(dispatchTime)
-    const expectedDate = new Date(expectedDeliveryTime)
-
-    if (expectedDate <= dispatchDate) {
-      setError('Expected Delivery Time must be after the Dispatch Time.')
+    if (deliveryTimeError) {
+      setError(deliveryTimeError)
       return
     }
 
@@ -237,11 +213,10 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       {/* Modal Container */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col relative z-10 shadow-2xl animate-in scale-in duration-200">
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-              <Plus size={18} className="text-cyan-400" />
+            <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
+              <Plus size={18} className="text-white" />
             </div>
             <h3 className="text-xl font-bold text-white">Create New Order</h3>
           </div>
@@ -254,7 +229,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         </div>
 
         {/* Content Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-modal-scroll">
           {error && (
             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3 text-red-400 text-sm">
               <AlertCircle size={20} className="flex-shrink-0" />
@@ -280,7 +255,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     setCustomerSearchQuery(e.target.value)
                     setCustomerId('')
                   }}
-                  className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors text-sm"
+                  className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white transition-colors text-sm"
                   disabled={loading}
                 />
                 
@@ -315,7 +290,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     placeholder="e.g. WB-929"
                     value={waybillNumber}
                     onChange={(e) => setWaybillNumber(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-white transition-colors"
                   />
                 </div>
                 <div>
@@ -325,7 +300,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     placeholder="e.g. INV-102"
                     value={invoiceNumber}
                     onChange={(e) => setInvoiceNumber(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-white transition-colors"
                   />
                 </div>
               </div>
@@ -344,8 +319,20 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                   type="datetime-local"
                   required
                   value={dispatchTime}
-                  onChange={(e) => setDispatchTime(e.target.value)}
-                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 focus:outline-none focus:border-cyan-500 transition-colors"
+                  onChange={(e) => {
+                    setDispatchTime(e.target.value)
+                    // Re-validate delivery time if it's already set
+                    if (expectedDeliveryTime && e.target.value) {
+                      const dispatch = new Date(e.target.value)
+                      const delivery = new Date(expectedDeliveryTime)
+                      if (delivery <= dispatch) {
+                        setDeliveryTimeError('Expected Delivery must be after Dispatch Time.')
+                      } else {
+                        setDeliveryTimeError('')
+                      }
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 focus:outline-none focus:border-white transition-colors"
                 />
               </div>
               <div>
@@ -354,9 +341,31 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                   type="datetime-local"
                   required
                   value={expectedDeliveryTime}
-                  onChange={(e) => setExpectedDeliveryTime(e.target.value)}
-                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 focus:outline-none focus:border-cyan-500 transition-colors"
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setExpectedDeliveryTime(val)
+                    if (dispatchTime && val) {
+                      const dispatch = new Date(dispatchTime)
+                      const delivery = new Date(val)
+                      if (delivery <= dispatch) {
+                        setDeliveryTimeError('Expected Delivery must be after Dispatch Time.')
+                      } else {
+                        setDeliveryTimeError('')
+                      }
+                    } else {
+                      setDeliveryTimeError('')
+                    }
+                  }}
+                  className={`w-full px-4 py-2 bg-zinc-800 border rounded-xl text-zinc-100 focus:outline-none transition-colors ${
+                    deliveryTimeError ? 'border-red-500 focus:border-red-500' : 'border-zinc-700 focus:border-white'
+                  }`}
                 />
+                {deliveryTimeError && (
+                  <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1">
+                    <AlertCircle size={12} />
+                    {deliveryTimeError}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-zinc-400 mb-1">Driver Name</label>
@@ -367,7 +376,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     placeholder="e.g. John Doe"
                     value={driverName}
                     onChange={(e) => setDriverName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-white transition-colors"
                   />
                 </div>
               </div>
@@ -378,7 +387,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                   placeholder="e.g. KDS-288AA"
                   value={vehicleNumber}
                   onChange={(e) => setVehicleNumber(e.target.value)}
-                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-cyan-500 transition-colors"
+                  className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-white transition-colors"
                 />
               </div>
             </div>
@@ -393,7 +402,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
               <button
                 type="button"
                 onClick={handleAddLineItem}
-                className="flex items-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-cyan-400 hover:text-cyan-300 text-xs font-semibold rounded-lg border border-zinc-700 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-white hover:text-zinc-200 text-xs font-semibold rounded-lg border border-zinc-700 transition-colors"
               >
                 <Plus size={14} /> Add Product
               </button>
@@ -430,7 +439,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                           }
                         }
                       }}
-                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition-colors text-sm"
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white transition-colors text-sm"
                       disabled={loading}
                     />
                     
@@ -457,7 +466,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                       placeholder="Qty"
                       value={item.quantity}
                       onChange={(e) => handleLineItemChange(index, 'quantity', e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-cyan-500 transition-colors text-sm"
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
                     />
                   </div>
 
@@ -466,7 +475,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     <select
                       value={item.unit}
                       onChange={(e) => handleLineItemChange(index, 'unit', e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-cyan-500 transition-colors text-sm"
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
                     >
                       <option value="Carton">Carton</option>
                       <option value="Keg">Keg</option>
@@ -499,17 +508,17 @@ export default function CreateOrderModal({ isOpen, onClose }) {
               placeholder="Enter dispatch notes, specific customer requirements, etc."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-cyan-500 transition-colors text-sm"
+              className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-white transition-colors text-sm"
             />
           </div>
         </form>
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-zinc-800 bg-zinc-900/50 flex items-center justify-end gap-3">
-          <button
+           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-zinc-750 hover:bg-zinc-800 text-zinc-300 font-medium rounded-xl transition-colors text-sm"
+            className="px-4 py-2 border border-zinc-750 hover:border-red-500 hover:bg-red-500 text-zinc-300 hover:text-white font-medium rounded-xl transition-all duration-200 text-sm"
             disabled={submitting}
           >
             Cancel
@@ -517,7 +526,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold rounded-xl shadow-lg shadow-cyan-600/15 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+            className="px-5 py-2 border border-zinc-750 hover:border-white bg-transparent hover:bg-white text-zinc-300 hover:text-zinc-900 font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm"
             disabled={submitting}
           >
             {submitting ? 'Creating...' : 'Create Order'}

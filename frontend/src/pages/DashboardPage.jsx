@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import DashboardMetricsCards from '../components/DashboardMetricsCards'
+import DashboardCharts from '../components/DashboardCharts'
 import DashboardTabs from '../components/DashboardTabs'
-import OrdersTable from '../components/OrdersTable'
 import DashboardWelcome from '../components/DashboardWelcome'
 
 export default function DashboardPage() {
@@ -87,9 +87,9 @@ export default function DashboardPage() {
           <DashboardTabs />
         </div>
 
-        {/* Orders Table */}
+        {/* Visualizations and Charts */}
         <div className="mb-8">
-          <OrdersTable />
+          <DashboardCharts />
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from models import Order, OrderStatus
 from sqlalchemy.orm import Session
 from difflib import SequenceMatcher
@@ -17,7 +17,10 @@ def calculate_order_status(order: Order) -> OrderStatus:
     else:
         if not order.dispatch_time:
             return OrderStatus.DRAFT
-        elif datetime.utcnow() <= order.expected_delivery_time:
+        
+        # Dynamically match timezone awareness of order.expected_delivery_time
+        now = datetime.now(timezone.utc) if (order.expected_delivery_time and order.expected_delivery_time.tzinfo) else datetime.utcnow()
+        if now <= order.expected_delivery_time:
             return OrderStatus.IN_TRANSIT
         else:
             return OrderStatus.DELAYED
@@ -199,5 +202,7 @@ def get_order_with_details(order: Order) -> dict:
 
 def calculate_hours_overdue(expected_time: datetime) -> int:
     """Calculate how many hours past expected delivery time."""
-    delta = datetime.utcnow() - expected_time
+    # Dynamically match timezone awareness of expected_time
+    now = datetime.now(timezone.utc) if (expected_time and expected_time.tzinfo) else datetime.utcnow()
+    delta = now - expected_time
     return int(delta.total_seconds() / 3600)

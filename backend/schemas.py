@@ -224,3 +224,5 @@ class DashboardMetrics(BaseModel):
     late_percentage: float
     top_5_states: List[StateMetrics]
     orders_last_30_days: List[OrderMetrics]
+    total_orders_30_days: int
+    orders_growth_percentage: float

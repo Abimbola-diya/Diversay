@@ -1,0 +1,39 @@
+{
+  "metrics": [
+    { "id": "order_count",        "label": "Number of Orders",           "description": "Count of orders" },
+    { "id": "total_revenue",      "label": "Total Revenue (₦)",          "description": "Sum of order line item values" },
+    { "id": "avg_delivery_hours", "label": "Avg Delivery Time (hrs)",    "description": "Average hours between dispatch and delivery" },
+    { "id": "delayed_count",      "label": "Number of Delayed Orders",   "description": "Count of orders that are currently delayed" },
+    { "id": "on_time_rate",       "label": "On-Time Delivery Rate (%)",  "description": "Percentage of delivered orders that arrived on time" },
+    { "id": "total_quantity",     "label": "Total Quantity Dispatched",   "description": "Sum of product quantities across line items" }
+  ],
+
+  "group_by": [
+    { "id": "day",       "label": "Day",           "chart": "area",  "description": "Group by calendar day" },
+    { "id": "week",      "label": "Week",          "chart": "area",  "description": "Group by calendar week" },
+    { "id": "month",     "label": "Month",         "chart": "area",  "description": "Group by calendar month" },
+    { "id": "customer",  "label": "Customer",      "chart": "bar",   "description": "Group by customer name" },
+    { "id": "product",   "label": "Product",       "chart": "bar",   "description": "Group by product name" },
+    { "id": "state",     "label": "State/Region",  "chart": "bar",   "description": "Group by customer state" },
+    { "id": "driver",    "label": "Driver",         "chart": "bar",   "description": "Group by driver name" },
+    { "id": "status",    "label": "Order Status",   "chart": "donut", "description": "Group by order fulfillment status" }
+  ],
+
+  "filters": [
+    { "id": "status",   "type": "enum",    "values": ["Draft", "In Transit", "Delayed", "Delivered (On Time)", "Delivered (Late)"] },
+    { "id": "state",    "type": "dynamic", "description": "Customer state/region" },
+    { "id": "customer", "type": "dynamic", "description": "Customer name" },
+    { "id": "product",  "type": "dynamic", "description": "Product name" }
+  ],
+
+  "time_ranges": [
+    { "id": "last_7_days",   "label": "Last 7 Days" },
+    { "id": "last_30_days",  "label": "Last 30 Days" },
+    { "id": "last_90_days",  "label": "Last 90 Days" },
+    { "id": "this_year",     "label": "This Year" },
+    { "id": "all_time",      "label": "All Time" }
+  ],
+
+  "sort_options": ["asc", "desc"],
+  "limit_options": [3, 5, 10, 20, 50]
+}

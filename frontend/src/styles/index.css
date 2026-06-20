@@ -166,5 +166,42 @@ input:-webkit-autofill:active {
   animation: pulse-glow 1.5s ease-in-out infinite;
 }
 
+.custom-product-dropdown-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff #27272a;
+}
+.custom-product-dropdown-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-product-dropdown-scroll::-webkit-scrollbar-track {
+  background: #27272a;
+  border-radius: 0 12px 12px 0;
+}
+.custom-product-dropdown-scroll::-webkit-scrollbar-thumb {
+  background: #ffffff;
+  border-radius: 9999px;
+}
+.custom-product-dropdown-scroll::-webkit-scrollbar-thumb:hover {
+  background: #e4e4e7;
+}
+
+.custom-modal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff #18181b;
+}
+.custom-modal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-modal-scroll::-webkit-scrollbar-track {
+  background: #18181b;
+}
+.custom-modal-scroll::-webkit-scrollbar-thumb {
+  background: #ffffff;
+  border-radius: 9999px;
+}
+.custom-modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #e4e4e7;
+}
+
 
 
