@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import api from '../services/api'
+import api, { getWithCache } from '../services/api'
 import {
   AreaChart,
   Area,
@@ -43,6 +43,17 @@ export default function DashboardCharts() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [hoveredSlice, setHoveredSlice] = useState(null)
+  const [hoveredBarIndex, setHoveredBarIndex] = useState(null)
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMousePos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    })
+  }
 
   useEffect(() => {
     fetchAnalytics()
@@ -50,9 +61,15 @@ export default function DashboardCharts() {
 
   const fetchAnalytics = async () => {
     try {
-      setLoading(true)
-      const response = await api.get('/analytics/dashboard')
-      setData(response.data)
+      if (!data) {
+        setLoading(true)
+      }
+      const { data: resData } = await getWithCache('/analytics/dashboard', {
+        onCacheUpdate: (freshData) => {
+          setData(freshData)
+        }
+      })
+      setData(resData)
       setError(null)
     } catch (err) {
       console.error('Failed to fetch analytics:', err)
@@ -219,7 +236,11 @@ export default function DashboardCharts() {
           <p className="text-xs text-zinc-400 mt-1">Breakdown of current order fulfillment states</p>
         </div>
 
-        <div className="h-56 relative flex items-center justify-center">
+        <div 
+          className="h-56 relative flex items-center justify-center"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoveredSlice(null)}
+        >
           {statusData.length === 0 ? (
             <div className="text-zinc-500 text-sm">No status data available</div>
           ) : (
@@ -240,6 +261,9 @@ export default function DashboardCharts() {
                         transform-origin: center;
                         animation: rollPieAnim 30s ease-in-out infinite;
                       }
+                      .recharts-pie:hover {
+                        animation-play-state: paused;
+                      }
                     `}
                   </style>
                 </defs>
@@ -251,6 +275,8 @@ export default function DashboardCharts() {
                   outerRadius={80}
                   paddingAngle={4}
                   dataKey="value"
+                  onMouseEnter={(entry) => setHoveredSlice(entry)}
+                  onMouseLeave={() => setHoveredSlice(null)}
                 >
                   {statusData.map((entry, index) => (
                     <Cell
@@ -259,23 +285,31 @@ export default function DashboardCharts() {
                     />
                   ))}
                 </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#18181b',
-                    borderColor: '#27272a',
-                    borderRadius: '12px',
-                    color: '#ffffff'
-                  }}
-                />
               </PieChart>
             </ResponsiveContainer>
           )}
 
           {/* On-Time Rate HUD */}
           {data.on_time_percentage > 0 && (
-            <div className="absolute flex flex-col items-center justify-center">
+            <div className="absolute flex flex-col items-center justify-center pointer-events-none">
               <span className="text-2xl font-bold text-white">{data.on_time_percentage}%</span>
               <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">On-Time Rate</span>
+            </div>
+          )}
+
+          {/* Precise, rotation-aware Custom Tooltip with white text */}
+          {hoveredSlice && (
+            <div 
+              className="absolute z-50 bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 px-3.5 shadow-2xl pointer-events-none"
+              style={{
+                left: mousePos.x + 12,
+                top: mousePos.y - 12,
+                transform: 'translate(0, -50%)'
+              }}
+            >
+              <p className="text-xs font-semibold text-white whitespace-nowrap">
+                {hoveredSlice.name} : <span className="font-bold text-white">{hoveredSlice.value}</span>
+              </p>
             </div>
           )}
         </div>
@@ -330,20 +364,33 @@ export default function DashboardCharts() {
                   axisLine={false}
                 />
                 <Tooltip
+                  cursor={false}
                   contentStyle={{
                     backgroundColor: '#18181b',
                     borderColor: '#27272a',
                     borderRadius: '12px',
                     color: '#ffffff'
                   }}
+                  itemStyle={{ color: '#ffffff' }}
+                  labelStyle={{ color: '#ffffff', fontWeight: 'bold' }}
                 />
-                <Bar dataKey="orders" radius={[0, 6, 6, 0]}>
-                  {stateData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={`rgba(255, 255, 255, ${0.9 - index * 0.15})`}
-                    />
-                  ))}
+                <Bar 
+                  dataKey="orders" 
+                  radius={[0, 6, 6, 0]}
+                  onMouseEnter={(data, index) => setHoveredBarIndex(index)}
+                  onMouseLeave={() => setHoveredBarIndex(null)}
+                >
+                  {stateData.map((entry, index) => {
+                    const isHovered = hoveredBarIndex === index
+                    const baseOpacity = 0.75 - index * 0.12
+                    return (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={isHovered ? '#ffffff' : `rgba(255, 255, 255, ${baseOpacity})`}
+                        style={{ cursor: 'pointer', transition: 'fill 0.2s ease' }}
+                      />
+                    )
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

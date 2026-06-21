@@ -172,6 +172,7 @@ def get_order_with_details(order: Order) -> dict:
         "customer_id": order.customer_id,
         "customer_name": order.customer.name if order.customer else None,
         "customer_state": order.customer.state if order.customer else None,
+        "customer_address": order.customer.address if order.customer else None,
         "dispatch_time": order.dispatch_time,
         "expected_delivery_time": order.expected_delivery_time,
         "actual_delivery_time": order.actual_delivery_time,

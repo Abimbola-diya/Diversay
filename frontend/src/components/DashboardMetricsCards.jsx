@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import api from '../services/api'
+import api, { getWithCache } from '../services/api'
 import { Package, AlertCircle, TrendingUp, Users } from 'lucide-react'
 
 export default function DashboardMetricsCards() {
@@ -13,21 +13,29 @@ export default function DashboardMetricsCards() {
 
   const fetchMetrics = async () => {
     try {
-      setLoading(true)
-      const response = await api.get('/analytics/dashboard')
-      setMetrics(response.data)
+      if (!metrics) {
+        setLoading(true)
+      }
+      const { data: resData } = await getWithCache('/analytics/dashboard', {
+        onCacheUpdate: (freshData) => {
+          setMetrics(freshData)
+        }
+      })
+      setMetrics(resData)
       setError(null)
     } catch (err) {
       console.error('Failed to fetch dashboard metrics:', err)
       setError('Failed to load dashboard metrics')
-      // Set mock data for demo purposes
-      setMetrics({
-        total_orders_today: 12,
-        in_transit_count: 8,
-        delayed_count: 2,
-        delivered_this_week: 45,
-        total_customers: 23
-      })
+      // Set mock data for demo purposes if it doesn't exist
+      if (!metrics) {
+        setMetrics({
+          total_orders_today: 12,
+          in_transit_count: 8,
+          delayed_count: 2,
+          delivered_this_week: 45,
+          total_customers: 23
+        })
+      }
     } finally {
       setLoading(false)
     }

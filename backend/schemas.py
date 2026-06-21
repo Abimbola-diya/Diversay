@@ -164,6 +164,7 @@ class OrderResponse(BaseModel):
     customer_id: int
     customer_name: Optional[str] = None
     customer_state: Optional[str] = None
+    customer_address: Optional[str] = None
     dispatch_time: Optional[datetime]
     expected_delivery_time: Optional[datetime]
     actual_delivery_time: Optional[datetime]

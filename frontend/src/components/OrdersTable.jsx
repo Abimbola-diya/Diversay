@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import api from '../services/api'
-import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar, ArrowRight, MapPin } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { Link } from 'react-router-dom'
 
 export default function OrdersTable() {
   const [orders, setOrders] = useState([])
@@ -117,6 +118,79 @@ export default function OrdersTable() {
   }
 
   const totalPages = Math.ceil(totalOrders / pageSize)
+
+  const getDispatchDate = (dateString) => {
+    if (!dateString) return 'PENDING'
+    try {
+      const d = new Date(dateString)
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+      return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+    } catch {
+      return 'PENDING'
+    }
+  }
+
+  const getDispatchTime = (dateString) => {
+    if (!dateString) return 'PENDING'
+    try {
+      const d = new Date(dateString)
+      return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return 'PENDING'
+    }
+  }
+
+  const getDispatchMonthYear = (dateString) => {
+    if (!dateString) return 'JUN 2026'
+    try {
+      const d = new Date(dateString)
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+      return `${months[d.getMonth()]} ${d.getFullYear()}`
+    } catch {
+      return 'JUN 2026'
+    }
+  }
+
+  const renderQRCode = (orderId, orderStatus, stateCode, monthYear) => {
+    const qrData = `${window.location.origin}/orders/${orderId}`
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}&color=ffffff&bgcolor=18181b&margin=0`
+
+    return (
+      <div className="flex items-center gap-3 mt-1 select-none">
+        <div className="w-16 h-16 bg-zinc-900 p-0.5 border border-zinc-800/80 flex-shrink-0 flex items-center justify-center">
+          <img
+            src={qrUrl}
+            alt="QR Code"
+            className="w-full h-full object-contain"
+            style={{ imageRendering: 'pixelated' }}
+          />
+        </div>
+        <div className="text-[10px] font-bold text-zinc-400 tracking-widest leading-normal uppercase">
+          <div>DIVERSAY · {orderStatus || 'DRAFT'} · {stateCode || 'LAG'} · {monthYear}</div>
+          <div className="text-red-500 font-extrabold mt-1">SCAN TO VERIFY MANIFEST</div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderBarcode = (orderNumber) => {
+    const seed = (orderNumber || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    return (
+      <div className="flex gap-[1.5px] h-10 items-end justify-center opacity-75 flex-shrink-0">
+        {[...Array(20)].map((_, i) => {
+          const width = ((seed + i * 7) % 3) + 1
+          const isGap = (seed + i * 13) % 3 === 0
+          return (
+            <div
+              key={i}
+              className={`h-full ${isGap ? 'bg-transparent' : 'bg-zinc-300'}`}
+              style={{ width: `${width}px` }}
+            />
+          )
+        })}
+      </div>
+    )
+  }
 
   if (error && orders.length === 0) {
     return (
@@ -362,7 +436,7 @@ export default function OrdersTable() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Ticket List Stack */}
       {loading ? (
         <div className="p-8 text-center text-zinc-400">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500 mb-3"></div>
@@ -373,149 +447,166 @@ export default function OrdersTable() {
           <p>No orders found. Try adjusting your filters.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-zinc-800 bg-zinc-800/50">
-                <th className="px-6 py-4 text-left text-sm font-semibold text-zinc-300 w-10"></th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-zinc-300 min-w-[200px]">
-                  Customer Name
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-zinc-300 min-w-[180px]">
-                  Product(s)
-                </th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-zinc-300 min-w-[120px]">
-                  Amount
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-zinc-300 min-w-[100px]">
-                  Location
-                </th>
-                <th className="px-6 py-4 text-center text-sm font-semibold text-zinc-300 w-12"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <React.Fragment key={order.id}>
-                  {/* Main Row - 4 Primary Fields */}
-                  <tr className="border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <div
-                        className={`w-1 h-full rounded-full transition-colors ${order.order_status === 'In Transit'
-                            ? 'bg-blue-500'
-                            : order.order_status === 'Delayed'
-                              ? 'bg-red-500'
-                              : order.order_status === 'Delivered (On Time)'
-                                ? 'bg-green-500'
-                                : order.order_status === 'Delivered (Late)'
-                                  ? 'bg-orange-500'
-                                  : 'bg-zinc-500'
-                          }`}
-                      />
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-white font-medium">{order.customer_name}</p>
-                      <p className="text-zinc-500 text-xs">{order.order_number}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        {order.line_items.map((item, idx) => (
-                          <p key={idx} className="text-zinc-300 text-sm">
-                            {item.product_name}
-                          </p>
-                        ))}
+        <div className="p-6 flex flex-col gap-6 bg-zinc-950/20">
+          <div className="flex flex-col gap-8">
+            {orders.map((order) => {
+              const stateName = order.customer_state || 'DESTINATION'
+              const stateCode = stateName.substring(0, 3).toUpperCase()
+              const monthYear = getDispatchMonthYear(order.dispatch_time)
+              const deliveryDate = getDispatchDate(order.actual_delivery_time)
+              const deliveryTime = getDispatchTime(order.actual_delivery_time)
+              const expectedDate = getDispatchDate(order.expected_delivery_time)
+              const expectedTime = getDispatchTime(order.expected_delivery_time)
+
+              return (
+                <div
+                  key={order.id}
+                  className="relative w-full h-[410px] bg-zinc-900/90 text-zinc-100 rounded-3xl flex hover:shadow-2xl hover:shadow-zinc-950/50 transition-all duration-300 font-sans border border-zinc-800 select-none"
+                >
+                  {/* Left & Right tear notch cutouts (bite effect) */}
+                  <div className="absolute top-[-1px] right-[22%] translate-x-1/2 w-6 h-3 rounded-b-full bg-[#151518] border-b border-l border-r border-zinc-800 z-20" />
+                  <div className="absolute bottom-[-1px] right-[22%] translate-x-1/2 w-6 h-3 rounded-t-full bg-[#151518] border-t border-l border-r border-zinc-800 z-20" />
+
+                  {/* Vertical Tear-off line */}
+                  <div className="absolute top-3 bottom-3 right-[22%] border-r border-dashed border-zinc-800 z-10" />
+
+                  {/* Left Section (78% width) */}
+                  <div className="w-[78%] pt-8 px-8 pb-8 flex flex-col justify-between relative h-full">
+
+                    {/* Header Row */}
+                    <div className="flex justify-between items-center">
+                      <div className="text-xl font-black tracking-tighter uppercase text-white flex items-center">
+                        DIVERSAY<span className="text-red-500 ml-0.5">*</span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <p className="text-white font-semibold">
-                        {formatCurrency(order.total_amount)}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-zinc-300 text-sm">{order.customer_state || 'N/A'}</p>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => toggleRowExpand(order.id)}
-                        className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
-                        title="View more fields"
-                      >
-                        <ChevronDown
-                          size={20}
-                          className={`text-zinc-400 transition-transform ${expandedRows.has(order.id) ? 'rotate-180' : ''
-                            }`}
-                        />
-                      </button>
-                    </td>
-                  </tr>
 
-                  {/* Expanded Row - Additional Fields */}
-                  {expandedRows.has(order.id) && (
-                    <tr className="border-b border-zinc-800 bg-zinc-800/20">
-                      <td colSpan="6" className="px-6 py-4">
-                        <div
-                          className="overflow-x-auto pb-2"
-                          onScroll={(e) => handleTableScroll(e, order.id)}
-                        >
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 min-w-max md:min-w-full">
-                            {/* Order Number */}
-                            <div>
-                              <p className="text-zinc-500 text-xs font-medium">Order #</p>
-                              <p className="text-white text-sm font-mono">{order.order_number}</p>
-                            </div>
-
-                            {/* Total Quantity */}
-                            <div>
-                              <p className="text-zinc-500 text-xs font-medium">Quantity</p>
-                              <p className="text-white text-sm">
-                                {order.line_items.reduce((sum, item) => sum + item.quantity, 0)} units
-                              </p>
-                            </div>
-
-                            {/* Dispatch Time */}
-                            <div>
-                              <p className="text-zinc-500 text-xs font-medium">Sent Out</p>
-                              <p className="text-white text-sm">{formatDate(order.dispatch_time)}</p>
-                              {order.dispatch_time && (
-                                <p className="text-zinc-500 text-xs">
-                                  {formatDistanceToNow(new Date(order.dispatch_time), { addSuffix: true })}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Expected Delivery */}
-                            <div>
-                              <p className="text-zinc-500 text-xs font-medium">Expected Delivery</p>
-                              <p className="text-white text-sm">{formatDate(order.expected_delivery_time)}</p>
-                            </div>
-
-                            {/* Actual Delivery */}
-                            <div>
-                              <p className="text-zinc-500 text-xs font-medium">Actual Delivery</p>
-                              <p className="text-white text-sm">
-                                {order.actual_delivery_time ? formatDate(order.actual_delivery_time) : 'Pending'}
-                              </p>
-                            </div>
-
-                            {/* Status */}
-                            <div>
-                              <p className="text-zinc-500 text-xs font-medium">Status</p>
-                              <span
-                                className={`inline-block px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(
-                                  order.order_status
-                                )}`}
-                              >
-                                {order.order_status}
-                              </span>
-                            </div>
+                      <div className="flex items-center gap-4 text-center">
+                        <div className="flex flex-col items-center text-center">
+                          <div className="text-sm font-black tracking-widest text-white leading-none">AGEGE</div>
+                          <div className="text-[9px] font-bold text-zinc-500 tracking-wider uppercase mt-1">LAGOS</div>
+                        </div>
+                        <div className="text-red-500 flex items-center justify-center">
+                          <svg className="w-12 h-3" fill="none" viewBox="0 0 48 12" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2 6h42M38 2l6 4-6 4" />
+                          </svg>
+                        </div>
+                        <div className="flex flex-col items-center text-center">
+                          <div className="text-sm font-black tracking-widest text-white leading-none">DEST</div>
+                          <div className="text-[9px] font-bold text-zinc-500 tracking-wider uppercase mt-1 truncate max-w-[85px]" title={stateName}>
+                            {stateName}
                           </div>
                         </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+                      </div>
+                    </div>
+
+                    {/* Dotted border above customer */}
+                    <div className="border-t border-dashed border-zinc-800 w-full mt-4" />
+
+                    {/* Passenger / Customer Details */}
+                    <div className="py-3">
+                      <div className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase mb-1">CUSTOMER</div>
+                      <div className="text-xl font-black tracking-tight text-white uppercase truncate leading-none">
+                        {order.customer_name}
+                      </div>
+                    </div>
+
+                    {/* Dotted border below customer */}
+                    <div className="border-t border-dashed border-zinc-800 w-full mb-4" />
+
+                    {/* Specifications Grid */}
+                    <div className="grid grid-cols-4 gap-2 py-2 mb-4 text-left">
+                      <div className="flex flex-col items-start text-left">
+                        <div className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">EXPECTED DATE</div>
+                        <div className="text-sm font-black text-white mt-1 uppercase truncate w-full">{expectedDate}</div>
+                      </div>
+                      <div className="flex flex-col items-center text-center">
+                        <div className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">EXPECTED TIME</div>
+                        <div className="text-sm font-black text-white mt-1 uppercase truncate w-full">{expectedTime}</div>
+                      </div>
+                      <div className="flex flex-col items-center text-center">
+                        <div className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">DELIVERY DATE</div>
+                        <div className="text-sm font-black text-white mt-1 uppercase truncate w-full">{deliveryDate}</div>
+                      </div>
+                      <div className="flex flex-col items-center text-center">
+                        <div className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">DELIVERY TIME</div>
+                        <div className="text-sm font-black text-white mt-1 uppercase truncate w-full">{deliveryTime}</div>
+                      </div>
+                    </div>
+
+                    {/* QR Code and verification info */}
+                    <div className="flex items-center gap-3 my-4">
+                      {renderQRCode(order.id, order.order_status, stateCode, monthYear)}
+                    </div>
+
+                    {/* Secure button / link banner */}
+                    <Link
+                      to={`/orders/${order.id}`}
+                      className="block w-full bg-zinc-950 hover:bg-white hover:text-zinc-950 text-white py-3 rounded-md font-black text-[10px] tracking-[0.2em] uppercase transition-all duration-300 mt-2 border border-zinc-800/80 hover:border-white hover:shadow-lg hover:shadow-white/10"
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        SEE ORDER DETAILS
+                        <svg className="w-5 h-3 ml-0.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                      </span>
+                    </Link>
+                  </div>
+
+                  {/* Right Section (Ticket Stub - 22% width) */}
+                  <div className="w-[22%] pt-6 px-6 pb-8 flex flex-col justify-between items-center text-center relative z-10 pl-4 h-full">
+                    {/* Logo stub */}
+                    <div>
+                      <div className="text-2xl font-black text-white tracking-tighter">D<span className="text-red-500">*</span></div>
+                      <div className="text-[10px] font-bold text-zinc-500 tracking-[0.2em] uppercase mt-0.5">ORDER SUMMARY</div>
+                    </div>
+
+                    {/* Status & Name Stub */}
+                    <div className="flex flex-col gap-6 my-4 w-full px-1">
+                      <div>
+                        <div className="text-[9px] font-bold text-zinc-500 tracking-[0.2em] uppercase mb-0.5">STATUS</div>
+                        <div className="text-[13px] font-black text-red-500 uppercase tracking-[0.1em] truncate">
+                          {order.order_status.replace(/ \(On Time\)|\(Late\)/i, '')}
+                        </div>
+                      </div>
+
+                      <div className="max-w-full">
+                        <div className="text-[9px] font-bold text-zinc-500 tracking-[0.2em] uppercase mb-0.5">CUSTOMER</div>
+                        <div className="text-[12px] font-black text-white uppercase tracking-wide truncate">
+                          {order.customer_name}
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] font-bold text-zinc-500 tracking-[0.15em] uppercase">
+                        {monthYear}
+                      </div>
+                    </div>
+
+                    {/* Barcode */}
+                    <div className="mt-auto pt-2 w-full flex justify-center">
+                      {renderBarcode(order.order_number)}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Visual fan-out overlapping ticket stack at the bottom of the list */}
+          {orders.length > 0 && (
+            <div className="relative mt-12 mb-6 flex flex-col items-center justify-center pointer-events-none opacity-85 h-20">
+              <div className="absolute w-[80%] h-14 bg-zinc-900/30 border border-zinc-800/35 rounded-2xl transform translate-y-6 scale-[0.92] z-0" />
+              <div className="absolute w-[88%] h-14 bg-zinc-900/60 border border-zinc-800/65 rounded-2xl transform translate-y-3 scale-[0.96] z-10" />
+              <div className="relative w-[95%] bg-zinc-900 border border-zinc-800 text-white rounded-2xl p-4 z-20 flex items-center justify-between shadow-xl">
+                <span className="text-xs font-black uppercase tracking-[0.15em] pl-4">
+                  {totalOrders - orders.length > 0 ? `${totalOrders - orders.length}+ More Manifests (Stacked)` : 'End of Stack'}
+                </span>
+                <div className="flex gap-1 pr-4">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.4s' }} />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
