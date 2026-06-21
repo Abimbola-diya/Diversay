@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import api from '../services/api'
 import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar, ArrowRight, MapPin } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 
 export default function OrdersTable() {
   const [orders, setOrders] = useState([])
+  const containerRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [page, setPage] = useState(0)
@@ -68,6 +69,68 @@ export default function OrdersTable() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    let targetScroll = window.scrollY
+    let animationFrameId = null
+
+    const handleNativeScroll = () => {
+      if (!animationFrameId) {
+        targetScroll = window.scrollY
+      }
+    }
+
+    const handleWheel = (e) => {
+      // Check if mouse is hovering over the cards list container
+      const rect = el.getBoundingClientRect()
+      const isHovering = (
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+      )
+
+      if (isHovering) {
+        e.preventDefault()
+
+        // Dampen the scroll input to 20% speed
+        const speedMultiplier = 0.40
+        targetScroll += e.deltaY * speedMultiplier
+
+        const maxScroll = document.documentElement.scrollHeight - window.innerHeight
+        targetScroll = Math.max(0, Math.min(targetScroll, maxScroll))
+
+        const smoothScroll = () => {
+          const currentScroll = window.scrollY
+          const diff = targetScroll - currentScroll
+          if (Math.abs(diff) > 0.5) {
+            // Slow, fluid glide interpolation
+            window.scrollTo(0, currentScroll + diff * 0.04)
+            animationFrameId = requestAnimationFrame(smoothScroll)
+          } else {
+            window.scrollTo(0, targetScroll)
+            animationFrameId = null
+          }
+        }
+
+        if (!animationFrameId) {
+          animationFrameId = requestAnimationFrame(smoothScroll)
+        }
+      }
+    }
+
+    window.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('scroll', handleNativeScroll, { passive: true })
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('scroll', handleNativeScroll)
+      if (animationFrameId) cancelAnimationFrame(animationFrameId)
+    }
+  }, [loading, orders])
 
   const toggleRowExpand = (orderId) => {
     const newExpanded = new Set(expandedRows)
@@ -207,7 +270,7 @@ export default function OrdersTable() {
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg">
       {/* Inline styles for the uniform electron border drawing animation with optimized performance */}
       <style>{`
         @keyframes border-draw {
@@ -448,8 +511,8 @@ export default function OrdersTable() {
         </div>
       ) : (
         <div className="p-6 flex flex-col gap-6 bg-zinc-950/20">
-          <div className="flex flex-col gap-8">
-            {orders.map((order) => {
+          <div ref={containerRef} className="flex flex-col gap-20 pb-32">
+            {orders.map((order, index) => {
               const stateName = order.customer_state || 'DESTINATION'
               const stateCode = stateName.substring(0, 3).toUpperCase()
               const monthYear = getDispatchMonthYear(order.dispatch_time)
@@ -461,7 +524,11 @@ export default function OrdersTable() {
               return (
                 <div
                   key={order.id}
-                  className="relative w-full h-[410px] bg-zinc-900/90 text-zinc-100 rounded-3xl flex hover:shadow-2xl hover:shadow-zinc-950/50 transition-all duration-300 font-sans border border-zinc-800 select-none"
+                  className="sticky w-full h-[410px] bg-zinc-900 text-zinc-100 rounded-3xl flex hover:shadow-2xl hover:shadow-zinc-950/50 hover:scale-[1.01] hover:-translate-y-1 hover:z-50 transition-all duration-300 font-sans border border-zinc-800 select-none"
+                  style={{
+                    top: `${120 + Math.min(index, 5) * 16}px`,
+                    zIndex: index + 10
+                  }}
                 >
                   {/* Left & Right tear notch cutouts (bite effect) */}
                   <div className="absolute top-[-1px] right-[22%] translate-x-1/2 w-6 h-3 rounded-b-full bg-[#151518] border-b border-l border-r border-zinc-800 z-20" />
