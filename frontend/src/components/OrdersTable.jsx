@@ -100,6 +100,15 @@ export default function OrdersTable() {
       )
 
       if (isHovering) {
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+        const currentScroll = window.scrollY
+
+        // Prevent vibration and overshoot at page boundaries
+        if ((e.deltaY > 0 && currentScroll >= maxScroll - 1) || (e.deltaY < 0 && currentScroll <= 1)) {
+          e.preventDefault()
+          return
+        }
+
         e.preventDefault()
 
         // If not currently animating, synchronize targetScroll to current scroll position
@@ -111,7 +120,6 @@ export default function OrdersTable() {
         const speedMultiplier = 0.40
         targetScroll += e.deltaY * speedMultiplier
 
-        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
         targetScroll = Math.max(0, Math.min(targetScroll, maxScroll))
 
         const smoothScroll = () => {
