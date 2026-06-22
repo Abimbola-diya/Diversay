@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import api from '../services/api'
 import { STATE_CENTROIDS, NIGERIA_MAP_PATHS } from '../components/NigeriaMap'
 import { 
@@ -18,13 +18,65 @@ import {
 // Normalize state names from DB to match SVG path IDs
 const normalizeStateName = (stateName) => {
   if (!stateName) return ""
-  const name = stateName.trim().toUpperCase()
+  let name = stateName.trim().toUpperCase()
+  if (name.endsWith(" STATE")) {
+    name = name.substring(0, name.length - 6).trim()
+  }
   if (name === "AKWA IBOM") return "akwa-ibom"
   if (name === "CROSS RIVER") return "cross-river"
   if (name === "NASARAWA" || name === "NASSARAWA") return "nassarawa"
   if (name === "FEDERAL CAPITAL TERRITORY" || name === "FEDERAL CAPITAL TERRITORY (FCT)" || name === "FCT") return "fct"
   return name.toLowerCase().replace(/\s+/g, '-')
 }
+
+const DirectoryList = React.memo(({ filteredCustomers, selectedCustomer, onCustomerClick }) => {
+  return (
+    <>
+      {filteredCustomers.map((c) => {
+        const isSelected = selectedCustomer?.id === c.id
+        return (
+          <div
+            key={c.id}
+            onClick={() => onCustomerClick(c)}
+            className={`p-3 rounded-xl border text-left cursor-pointer transition-colors duration-150 ease-out ${
+              isSelected
+                ? 'bg-zinc-900 border-zinc-700 shadow-md shadow-black/40'
+                : 'bg-zinc-950 hover:bg-zinc-900/40 border-zinc-900 hover:border-zinc-850'
+            }`}
+          >
+            <div className="flex justify-between items-start gap-2">
+              <h4 className="font-bold text-sm text-zinc-100 group-hover:text-white truncate">
+                {c.name}
+              </h4>
+              <span className="text-[10px] font-semibold text-zinc-400 bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded-md flex-shrink-0">
+                {c.state || 'UNKNOWN'}
+              </span>
+            </div>
+
+            <div className="mt-2 space-y-1">
+              <div className="flex items-start gap-1.5 text-xs text-zinc-400">
+                <Building size={12} className="text-zinc-600 mt-0.5 flex-shrink-0" />
+                <span className="truncate">{c.city ? `${c.city}, ` : ''}{c.address}</span>
+              </div>
+              {c.contact_number && (
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <Phone size={12} className="text-zinc-600 flex-shrink-0" />
+                  <span>{c.contact_number}</span>
+                </div>
+              )}
+              {c.email && (
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <Mail size={12} className="text-zinc-600 flex-shrink-0" />
+                  <span className="truncate">{c.email}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
+})
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState([])
@@ -39,6 +91,26 @@ export default function CustomersPage() {
   
   // Ref to handle mouse leave correctly on the popup
   const popupRef = useRef(null)
+
+  // Handle click outside of state path, state pins, popup card, and directory panel to deselect state
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const clickedPopup = popupRef.current && popupRef.current.contains(event.target)
+      const clickedStatePath = event.target.closest('path')
+      const clickedPin = event.target.closest('circle')
+      const clickedRightPanel = event.target.closest('#directory-panel-right')
+      
+      if (!clickedPopup && !clickedStatePath && !clickedPin && !clickedRightPanel) {
+        setSelectedState(null)
+        setSelectedCustomer(null)
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   // Fetch customers on mount
   useEffect(() => {
@@ -63,6 +135,20 @@ export default function CustomersPage() {
   const filteredCustomers = useMemo(() => {
     if (!searchQuery) return customers
     const query = searchQuery.toLowerCase().trim()
+    
+    // Strict State name search matching (so e.g. searching "lagos" restricts results only to Lagos state, avoiding matches on street addresses containing "lagos")
+    const stateKeys = Object.keys(STATE_CENTROIDS)
+    const matchingStateKey = stateKeys.find(key => {
+      const label = STATE_CENTROIDS[key].label.toLowerCase()
+      if (key === query || label === query) return true
+      if (key === 'fct' && query === 'abuja') return true
+      return false
+    })
+    
+    if (matchingStateKey) {
+      return customers.filter(c => normalizeStateName(c.state) === matchingStateKey)
+    }
+
     return customers.filter(c => 
       (c.name && c.name.toLowerCase().includes(query)) ||
       (c.city && c.city.toLowerCase().includes(query)) ||
@@ -123,7 +209,7 @@ export default function CustomersPage() {
         label: STATE_CENTROIDS[id]?.label || id.toUpperCase()
       }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 3)
+      .slice(0, 5)
 
     return {
       total: customers.length,
@@ -133,17 +219,17 @@ export default function CustomersPage() {
   }, [customers])
 
   // Handle clicking a customer in the list to highlight their state
-  const handleCustomerClick = (customer) => {
+  const handleCustomerClick = useCallback((customer) => {
     setSelectedCustomer(customer)
     const normState = normalizeStateName(customer.state)
     if (normState && STATE_CENTROIDS[normState]) {
       setSelectedState(normState)
       setHoveredState(normState)
     }
-  }
+  }, [])
 
-  // Get active hovered / selected state data for callout card
-  const activeCalloutState = hoveredState || selectedState
+  // Get active hovered / selected state data for callout card (selected state takes precedence to lock the card position during interaction)
+  const activeCalloutState = selectedState || hoveredState
   const activeCalloutCentroid = activeCalloutState ? STATE_CENTROIDS[activeCalloutState] : null
   const activeCalloutCustomers = activeCalloutState ? (customersByState[activeCalloutState] || []) : []
 
@@ -215,13 +301,11 @@ export default function CustomersPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
           {/* LEFT PANEL: Interactive Nigeria SVG Map */}
-          <div className="lg:col-span-8 bg-zinc-950 border border-zinc-900 rounded-2xl p-6 relative shadow-inner">
+          <div className="lg:col-span-8 bg-zinc-950 border border-zinc-900 rounded-2xl p-6 relative shadow-inner flex flex-col justify-between h-full min-h-[600px] lg:min-h-0">
             
-            
-
             {/* Reset View Button when a state is selected */}
             {(selectedState || searchQuery) && (
               <button
@@ -237,7 +321,7 @@ export default function CustomersPage() {
             )}
 
             {/* Map Rendering Container */}
-            <div className="w-full flex items-center justify-center relative p-2 md:p-4 select-none">
+            <div className="w-full flex-1 flex items-center justify-center relative p-2 md:p-4 select-none">
               <div className="relative w-full max-w-[650px] aspect-[744/600]">
                 
                 <svg
@@ -248,44 +332,41 @@ export default function CustomersPage() {
                   <defs>
                     {/* Glowing Red linear split 3D gradient for realistic location pin */}
                     <linearGradient id="location-pin-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#ef4444" /> {/* Lighter red on left */}
+                      <stop offset="0%" stopColor="#ef4444" />
                       <stop offset="45%" stopColor="#dc2626" />
-                      <stop offset="55%" stopColor="#b91c1c" /> {/* Split shadow line in the middle */}
-                      <stop offset="100%" stopColor="#7f1d1d" /> {/* Darker red on right */}
+                      <stop offset="55%" stopColor="#b91c1c" />
+                      <stop offset="100%" stopColor="#7f1d1d" />
                     </linearGradient>
                   </defs>
 
                   <g id="nigeria-states">
                     {NIGERIA_MAP_PATHS.map((state) => {
-                      const hasCustomers = unfilteredCountsByState[state.id] > 0
+                      const count = unfilteredCountsByState[state.id] || 0
                       const hasMatchingCustomers = (customersByState[state.id] || []).length > 0
                       const isHovered = hoveredState === state.id
                       const isSelected = selectedState === state.id
                       
-                      // Highlight matching states during active searches, fade out non-matching
-                      let fillClass = "fill-zinc-950" // default empty state
-                      let strokeClass = "stroke-zinc-800"
-                      let strokeWidth = "1.2"
+                      // Density distribution color mapping (shades of Obsidian, Teal Graphite, Indigo Charcoal, and Pewter)
+                      let fill = "#0c0d12" // CORE (Obsidian)
+                      if (count > 0) {
+                        if (count <= 2) fill = "#1f2b2d"      // MODERATE (Teal Graphite)
+                        else if (count <= 5) fill = "#394451" // HIGH (Indigo Charcoal)
+                        else fill = "#cbd2db"                 // PEAK (Pewter)
+                      }
                       
+                      let stroke = "#8e9aa8" // Thin cool silver-grey borders from reference image
+                      let strokeWidth = "1.2"
+                      let opacity = "1"
+                      
+                      // Active search query overrides
                       if (searchQuery) {
                         if (hasMatchingCustomers) {
-                          fillClass = isHovered || isSelected ? "fill-zinc-700" : "fill-zinc-850"
-                          strokeClass = isHovered || isSelected ? "stroke-zinc-400" : "stroke-zinc-600"
-                          strokeWidth = isHovered || isSelected ? "1.8" : "1.2"
+                          stroke = "#8e9aa8"
+                          strokeWidth = "1.2"
                         } else {
-                          fillClass = "fill-zinc-950 opacity-40"
-                          strokeClass = "stroke-zinc-900 opacity-40"
-                        }
-                      } else {
-                        // Unfiltered normal state
-                        if (hasCustomers) {
-                          fillClass = isSelected || isHovered ? "fill-zinc-800" : "fill-zinc-900"
-                          strokeClass = isSelected || isHovered ? "stroke-zinc-400" : "stroke-zinc-750"
-                          strokeWidth = isSelected || isHovered ? "1.8" : "1.2"
-                        } else {
-                          fillClass = isHovered ? "fill-zinc-900" : "fill-zinc-950"
-                          strokeClass = isHovered ? "stroke-zinc-600" : "stroke-zinc-800"
-                          strokeWidth = isHovered ? "1.5" : "1.2"
+                          opacity = "0.2"
+                          stroke = "#27272a"
+                          strokeWidth = "0.8"
                         }
                       }
 
@@ -294,18 +375,57 @@ export default function CustomersPage() {
                           key={state.id}
                           id={state.id}
                           d={state.d}
-                          className={`${fillClass} ${strokeClass} transition-all duration-200 cursor-pointer`}
-                          strokeWidth={strokeWidth}
+                          style={{ fill, stroke, strokeWidth, opacity }}
+                          className="transition-all duration-75 ease-out cursor-pointer"
                           onMouseEnter={() => {
                             setHoveredState(state.id)
                           }}
                           onMouseLeave={() => {
-                            setHoveredState(null)
+                            setHoveredState(prev => prev === state.id ? null : prev)
                           }}
                           onClick={() => {
                             setSelectedState(selectedState === state.id ? null : state.id)
                             setSelectedCustomer(null)
                           }}
+                        />
+                      )
+                    })}
+                  </g>
+
+                  {/* Active hovered/selected state overlay rendered on top to prevent adjacent path border clipping */}
+                  <g id="active-state-borders-overlay" className="pointer-events-none">
+                    {NIGERIA_MAP_PATHS.map((state) => {
+                      const isHovered = hoveredState === state.id
+                      const isSelected = selectedState === state.id
+                      if (!isHovered && !isSelected) return null
+
+                      const count = unfilteredCountsByState[state.id] || 0
+                      const hasMatchingCustomers = (customersByState[state.id] || []).length > 0
+                      
+                      let fill = "#0c0d12"
+                      if (count > 0) {
+                        if (count <= 2) fill = "#1f2b2d"
+                        else if (count <= 5) fill = "#394451"
+                        else fill = "#cbd2db"
+                      }
+
+                      let stroke = "#ffffff"
+                      let strokeWidth = "2.0"
+                      if (fill === "#cbd2db") {
+                        stroke = "#0c0d12"
+                      }
+
+                      let opacity = "1"
+                      if (searchQuery && !hasMatchingCustomers) {
+                        opacity = "0.2"
+                      }
+
+                      return (
+                        <path
+                          key={`overlay-${state.id}`}
+                          d={state.d}
+                          style={{ fill, stroke, strokeWidth, opacity }}
+                          className="transition-all duration-75 ease-out"
                         />
                       )
                     })}
@@ -338,25 +458,38 @@ export default function CustomersPage() {
                             filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.8))'
                           }}
                         >
-                          {/* Radial Glowing Aura rings */}
-                          <circle
-                            cx={centroid.x}
-                            cy={centroid.y}
-                            r={isHighlighed ? 18 : 14}
-                            className="fill-white opacity-10 animate-ping transition-all duration-300"
-                          />
+                           {/* Radial Glowing Aura rings */}
+                           <circle
+                             cx={centroid.x}
+                             cy={centroid.y}
+                             r={isHighlighed ? 18 : 14}
+                             className="fill-white opacity-10"
+                           >
+                             <animate
+                               attributeName="r"
+                               values={`${isHighlighed ? 12 : 9};${isHighlighed ? 30 : 22}`}
+                               dur="2s"
+                               repeatCount="indefinite"
+                             />
+                             <animate
+                               attributeName="opacity"
+                               values="0.15;0"
+                               dur="2s"
+                               repeatCount="indefinite"
+                             />
+                           </circle>
                           <circle
                             cx={centroid.x}
                             cy={centroid.y}
                             r={isHighlighed ? 12 : 9}
-                            className="fill-zinc-400/30 blur-[1px] transition-all duration-300"
+                            className="fill-zinc-400/30 blur-[1px] transition-[r] duration-100 ease-out"
                           />
                           {/* Inner solid core */}
                           <circle
                             cx={centroid.x}
                             cy={centroid.y}
                             r={isHighlighed ? 6.5 : 5}
-                            className="fill-white stroke-zinc-950 stroke-[1.5px] transition-all duration-300"
+                            className="fill-white stroke-zinc-950 stroke-[1.5px] transition-[r] duration-100 ease-out"
                           />
                         </g>
                       )
@@ -365,100 +498,135 @@ export default function CustomersPage() {
                 </svg>
 
                 {/* DYNAMIC RESPONSIVE HOVER POPUP CARD */}
-                {displayCallout && activeCalloutCentroid && (
-                  <div
-                    ref={popupRef}
-                    className={`absolute z-30 w-72 bg-zinc-900/95 border border-zinc-750 rounded-xl shadow-2xl p-4 backdrop-blur-md animate-scale-in pointer-events-auto`}
-                    style={{
-                      // Convert coordinates to relative percentages
-                      left: `${(activeCalloutCentroid.x / 744) * 100}%`,
-                      top: `${(activeCalloutCentroid.y / 600) * 100}%`,
-                      // Apply intelligent translation shift depending on quadrant to prevent overflow
-                      transform: `
-                        ${activeCalloutCentroid.x > 372 ? 'translate(-105%, 0)' : 'translate(15px, 0)'}
-                        ${activeCalloutCentroid.y > 300 ? 'translate(0, -105%)' : 'translate(0, 15px)'}
-                      `
-                    }}
-                  >
-                    {/* Header */}
-                    <div className="flex justify-between items-start pb-2 border-b border-zinc-800 mb-2">
-                      <div>
-                        <h4 className="font-bold text-sm text-white">
-                          {activeCalloutCentroid.label}
-                        </h4>
-                        <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-500">
-                          State Region
-                        </span>
-                      </div>
-                      <span className="px-2 py-0.5 bg-zinc-800 text-zinc-300 text-xs font-semibold rounded-md border border-zinc-700">
-                        {activeCalloutCustomers.length} {activeCalloutCustomers.length === 1 ? 'Customer' : 'Customers'}
+                <div
+                  ref={popupRef}
+                  className="absolute z-10 w-72 bg-zinc-900/95 border border-zinc-750 rounded-xl shadow-2xl p-4 backdrop-blur-md transition-[opacity,transform] duration-150 ease-out"
+                  style={{
+                    left: activeCalloutCentroid ? `${(activeCalloutCentroid.x / 744) * 100}%` : '0px',
+                    top: activeCalloutCentroid ? `${(activeCalloutCentroid.y / 600) * 100}%` : '0px',
+                    transform: activeCalloutCentroid ? `
+                      ${activeCalloutCentroid.x > 372 ? 'translate(-105%, 0)' : 'translate(15px, 0)'}
+                      ${activeCalloutCentroid.y > 300 ? 'translate(0, -105%)' : 'translate(0, 15px)'}
+                      scale(1)
+                    ` : 'translate(0, 0) scale(0.95)',
+                    opacity: displayCallout ? 1 : 0,
+                    visibility: displayCallout ? 'visible' : 'hidden',
+                    pointerEvents: selectedState ? 'auto' : 'none'
+                  }}
+                >
+                  {/* Header */}
+                  <div className="flex justify-between items-start pb-2 border-b border-zinc-800 mb-2">
+                    <div>
+                      <h4 className="font-bold text-sm text-white">
+                        {activeCalloutCentroid?.label || ""}
+                      </h4>
+                      <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-500">
+                        State Region
                       </span>
                     </div>
-
-                    {/* Customer Preview List */}
-                    <div className="max-h-[160px] overflow-y-auto custom-scrollbar pr-1 space-y-2">
-                      {activeCalloutCustomers.slice(0, 4).map((c) => (
-                        <div 
-                          key={c.id} 
-                          className={`p-2 rounded-lg text-left transition-colors ${
-                            selectedCustomer?.id === c.id 
-                              ? 'bg-zinc-800 border border-zinc-700' 
-                              : 'bg-zinc-950/40 hover:bg-zinc-850/50 border border-transparent'
-                          }`}
-                        >
-                          <p className="font-semibold text-xs text-zinc-200 truncate">{c.name}</p>
-                          <div className="flex items-center gap-1 text-[10px] text-zinc-400 mt-1">
-                            <Building size={10} className="text-zinc-500" />
-                            <span className="truncate">{c.city || 'N/A'}</span>
-                          </div>
-                          {c.contact_number && (
-                            <div className="flex items-center gap-1 text-[10px] text-zinc-400 mt-0.5">
-                              <Phone size={10} className="text-zinc-500" />
-                              <span>{c.contact_number}</span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Overflow hint details */}
-                    {activeCalloutCustomers.length > 4 && (
-                      <div className="mt-2 pt-2 border-t border-zinc-850 text-center">
-                        <p className="text-[10px] text-zinc-400">
-                          + {activeCalloutCustomers.length - 4} more customer{activeCalloutCustomers.length - 4 > 1 ? 's' : ''} in directory list
-                        </p>
-                      </div>
-                    )}
+                    <span className="px-2 py-0.5 bg-zinc-800 text-zinc-300 text-xs font-semibold rounded-md border border-zinc-700">
+                      {activeCalloutCustomers.length} {activeCalloutCustomers.length === 1 ? 'Customer' : 'Customers'}
+                    </span>
                   </div>
-                )}
+
+                  {/* Customer Preview List */}
+                  <div 
+                    className="overflow-y-auto custom-scrollbar pr-1 space-y-2"
+                    style={{ maxHeight: selectedState ? '220px' : '160px' }}
+                  >
+                    {(selectedState ? activeCalloutCustomers : activeCalloutCustomers.slice(0, 4)).map((c) => (
+                      <div 
+                        key={c.id} 
+                        onClick={() => setSelectedCustomer(selectedCustomer?.id === c.id ? null : c)}
+                        className={`p-2 rounded-lg text-left transition-colors cursor-pointer ${
+                          selectedCustomer?.id === c.id 
+                            ? 'bg-zinc-800 border border-zinc-700 text-white font-medium' 
+                            : 'bg-zinc-950/40 hover:bg-zinc-850/50 border border-transparent'
+                        }`}
+                      >
+                        <p className={`font-semibold text-xs transition-colors ${selectedCustomer?.id === c.id ? 'text-white' : 'text-zinc-200'}`}>{c.name}</p>
+                        <div className="flex items-center gap-1 text-[10px] text-zinc-400 mt-1">
+                          <Building size={10} className="text-zinc-500" />
+                          <span className="truncate">{c.city || 'N/A'}</span>
+                        </div>
+                        {c.contact_number && (
+                          <div className="flex items-center gap-1 text-[10px] text-zinc-400 mt-0.5">
+                            <Phone size={10} className="text-zinc-500" />
+                            <span>{c.contact_number}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Overflow hint details - hide when clicked/selected and scrolling through all */}
+                  {!selectedState && activeCalloutCustomers.length > 4 && (
+                    <div className="mt-2 pt-2 border-t border-zinc-850 text-center">
+                      <p className="text-[10px] text-zinc-400">
+                        + {activeCalloutCustomers.length - 4} more customer{activeCalloutCustomers.length - 4 > 1 ? 's' : ''} in directory list
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Map Legend */}
-            <div className="flex justify-between items-center bg-zinc-900/20 border border-zinc-900 rounded-xl p-3 flex-shrink-0 mt-4 text-[11px] text-zinc-500">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded bg-zinc-950 border border-zinc-800 inline-block"></span>
-                  <span>No Customers</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded bg-zinc-900 border border-zinc-750 inline-block"></span>
-                  <span>Contains Customers</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-white inline-block"></span>
-                  <span>Centroid Indicator</span>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-zinc-950 border border-zinc-900 rounded-xl p-4 gap-4 mt-6 text-xs text-zinc-400">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <span className="font-semibold text-zinc-500 uppercase tracking-widest text-[10px] mt-1 sm:mt-0">Distribution Scale:</span>
+                
+                {/* 2-Column Grid */}
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+                  {/* Column 1, Row 1: CORE */}
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded border border-zinc-850 inline-block" style={{ backgroundColor: '#0c0d12' }}></span>
+                    <span className="text-[11px] font-medium text-zinc-400">
+                      <span className="text-white uppercase font-bold tracking-wider text-[9px] mr-1">CORE</span>
+                      (Obsidian)
+                    </span>
+                  </div>
+
+                  {/* Column 2, Row 1: MODERATE */}
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded border border-zinc-800 inline-block" style={{ backgroundColor: '#1f2b2d' }}></span>
+                    <span className="text-[11px] font-medium text-zinc-400">
+                      <span className="text-white uppercase font-bold tracking-wider text-[9px] mr-1">MODERATE</span>
+                      (Teal Graphite)
+                    </span>
+                  </div>
+
+                  {/* Column 1, Row 2: HIGH (under CORE) */}
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded border border-zinc-750 inline-block" style={{ backgroundColor: '#394451' }}></span>
+                    <span className="text-[11px] font-medium text-zinc-400">
+                      <span className="text-white uppercase font-bold tracking-wider text-[9px] mr-1">HIGH</span>
+                      (Indigo Charcoal)
+                    </span>
+                  </div>
+
+                  {/* Column 2, Row 2: PEAK (under MODERATE) */}
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded border border-zinc-600 inline-block" style={{ backgroundColor: '#cbd2db' }}></span>
+                    <span className="text-[11px] font-medium text-zinc-400">
+                      <span className="text-white uppercase font-bold tracking-wider text-[9px] mr-1">PEAK</span>
+                      (Pewter)
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="hidden sm:block">
-                <span>Hover state or pin for customer data cards</span>
+              <div className="flex items-center gap-4 border-t sm:border-t-0 sm:border-l border-zinc-900 pt-2 sm:pt-0 sm:pl-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-white inline-block"></span>
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Centroid Indicator</span>
+                </div>
               </div>
             </div>
 
           </div>
 
           {/* RIGHT PANEL: Search, Interactive Stats & Customer Directory */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          <div id="directory-panel-right" className="lg:col-span-4 flex flex-col gap-6 w-full">
             
             {/* Customer Summary Statistics Cards */}
             <div className="grid grid-cols-2 gap-4 flex-shrink-0">
@@ -483,7 +651,7 @@ export default function CustomersPage() {
             </div>
 
             {/* Top State Hubs Mini-Dashboard */}
-            <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex-shrink-0 shadow-sm">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 shadow-sm">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
                 <TrendingUp size={12} className="text-zinc-400" />
                 Top Customer Hubs
@@ -543,7 +711,7 @@ export default function CustomersPage() {
               </div>
 
               {/* Scrollable Customer List */}
-              <div className="max-h-[500px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+              <div className="max-h-[260px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
                 {filteredCustomers.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-zinc-900/10 border border-dashed border-zinc-900 rounded-xl">
                     <Users className="text-zinc-600 w-8 h-8 mb-2" />
@@ -551,50 +719,11 @@ export default function CustomersPage() {
                     <p className="text-xs text-zinc-500 mt-1">Try modifying your search filter query</p>
                   </div>
                 ) : (
-                  filteredCustomers.map((c) => {
-                    const normState = normalizeStateName(c.state)
-                    const isSelected = selectedCustomer?.id === c.id
-
-                    return (
-                      <div
-                        key={c.id}
-                        onClick={() => handleCustomerClick(c)}
-                        className={`p-3 rounded-xl border text-left cursor-pointer transition-all duration-200 ${
-                          isSelected
-                            ? 'bg-zinc-900 border-zinc-700 shadow-md shadow-black/40'
-                            : 'bg-zinc-950 hover:bg-zinc-900/40 border-zinc-900 hover:border-zinc-850'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start gap-2">
-                          <h4 className="font-bold text-sm text-zinc-100 group-hover:text-white truncate">
-                            {c.name}
-                          </h4>
-                          <span className="text-[10px] font-semibold text-zinc-400 bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded-md flex-shrink-0">
-                            {c.state || 'UNKNOWN'}
-                          </span>
-                        </div>
-
-                        <div className="mt-2 space-y-1">
-                          <div className="flex items-start gap-1.5 text-xs text-zinc-400">
-                            <Building size={12} className="text-zinc-600 mt-0.5 flex-shrink-0" />
-                            <span className="truncate">{c.city ? `${c.city}, ` : ''}{c.address}</span>
-                          </div>
-                          {c.contact_number && (
-                            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                              <Phone size={12} className="text-zinc-600 flex-shrink-0" />
-                              <span>{c.contact_number}</span>
-                            </div>
-                          )}
-                          {c.email && (
-                            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
-                              <Mail size={12} className="text-zinc-600 flex-shrink-0" />
-                              <span className="truncate">{c.email}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })
+                  <DirectoryList 
+                    filteredCustomers={filteredCustomers}
+                    selectedCustomer={selectedCustomer}
+                    onCustomerClick={handleCustomerClick}
+                  />
                 )}
               </div>
             </div>
