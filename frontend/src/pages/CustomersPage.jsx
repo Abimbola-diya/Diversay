@@ -85,7 +85,16 @@ export default function CustomersPage() {
   
   // Search query & interaction states
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchInput, setSearchInput] = useState('')
   const [hoveredState, setHoveredState] = useState(null)
+
+  // Debounce search input to avoid keyboard lag when typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchInput)
+    }, 150) // 150ms delay is ideal for lag-free typing experience
+    return () => clearTimeout(handler)
+  }, [searchInput])
   const [selectedState, setSelectedState] = useState(null)
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   
@@ -307,10 +316,11 @@ export default function CustomersPage() {
           <div className="lg:col-span-8 bg-zinc-950 border border-zinc-900 rounded-2xl p-6 relative shadow-inner flex flex-col justify-between h-full min-h-[600px] lg:min-h-0">
             
             {/* Reset View Button when a state is selected */}
-            {(selectedState || searchQuery) && (
+            {(selectedState || searchQuery || searchInput) && (
               <button
                 onClick={() => {
                   setSelectedState(null)
+                  setSearchInput('')
                   setSearchQuery('')
                   setSelectedCustomer(null)
                 }}
@@ -692,14 +702,14 @@ export default function CustomersPage() {
             {/* Search & Directory Card Container */}
             <div className="bg-zinc-950 border border-zinc-900 rounded-2xl flex flex-col p-5 shadow-sm">
               
-              {/* Search Header */}
+               {/* Search Header */}
               <div className="relative mb-4 flex-shrink-0">
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500" />
                 <input
                   type="text"
                   placeholder="Search customer, city or state..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-800 focus:border-zinc-700 text-sm text-white placeholder-zinc-500 pl-10 pr-4 py-2.5 rounded-xl outline-none transition-colors"
                 />
               </div>
@@ -707,7 +717,11 @@ export default function CustomersPage() {
               {/* Directory Header */}
               <div className="flex justify-between items-center text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3 flex-shrink-0 px-1">
                 <span>Customer Directory</span>
-                <span>Showing {filteredCustomers.length}</span>
+                <span>
+                  {filteredCustomers.length > 100 
+                    ? `Showing 100 of ${filteredCustomers.length}` 
+                    : `Showing ${filteredCustomers.length}`}
+                </span>
               </div>
 
               {/* Scrollable Customer List */}
@@ -720,7 +734,7 @@ export default function CustomersPage() {
                   </div>
                 ) : (
                   <DirectoryList 
-                    filteredCustomers={filteredCustomers}
+                    filteredCustomers={filteredCustomers.slice(0, 100)}
                     selectedCustomer={selectedCustomer}
                     onCustomerClick={handleCustomerClick}
                   />
