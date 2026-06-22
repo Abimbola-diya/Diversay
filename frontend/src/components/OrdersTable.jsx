@@ -19,11 +19,15 @@ export default function OrdersTable() {
   const [expandedRows, setExpandedRows] = useState(new Set())
   const [scrollPosition, setScrollPosition] = useState({})
 
-  const pageSize = 50
+  const pageSize = 15
 
   useEffect(() => {
     fetchOrders()
   }, [page, searchTerm, filterState, filterStatus, filterProductType, dateRange])
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [page])
 
   useEffect(() => {
     const handleOrderCreated = () => {
@@ -77,12 +81,6 @@ export default function OrdersTable() {
     let targetScroll = window.scrollY
     let animationFrameId = null
 
-    const handleNativeScroll = () => {
-      if (!animationFrameId) {
-        targetScroll = window.scrollY
-      }
-    }
-
     const handleWheel = (e) => {
       // Check if mouse is hovering over the cards list container
       const rect = el.getBoundingClientRect()
@@ -96,19 +94,34 @@ export default function OrdersTable() {
       if (isHovering) {
         e.preventDefault()
 
-        // Dampen the scroll input to 20% speed
+        // If not currently animating, synchronize targetScroll to current scroll position
+        if (!animationFrameId) {
+          targetScroll = window.scrollY
+        }
+
+        // Dampen the scroll input speed
         const speedMultiplier = 0.40
         targetScroll += e.deltaY * speedMultiplier
 
-        const maxScroll = document.documentElement.scrollHeight - window.innerHeight
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
         targetScroll = Math.max(0, Math.min(targetScroll, maxScroll))
 
         const smoothScroll = () => {
           const currentScroll = window.scrollY
           const diff = targetScroll - currentScroll
           if (Math.abs(diff) > 0.5) {
-            // Slow, fluid glide interpolation
-            window.scrollTo(0, currentScroll + diff * 0.04)
+            // Smooth fluid glide interpolation
+            const nextScroll = currentScroll + diff * 0.08
+            window.scrollTo(0, nextScroll)
+
+            // Boundary detection: if the scroll position did not change, we hit the document limit
+            const postScroll = window.scrollY
+            if (Math.abs(postScroll - currentScroll) < 0.1) {
+              targetScroll = postScroll
+              animationFrameId = null
+              return
+            }
+
             animationFrameId = requestAnimationFrame(smoothScroll)
           } else {
             window.scrollTo(0, targetScroll)
@@ -123,11 +136,9 @@ export default function OrdersTable() {
     }
 
     window.addEventListener('wheel', handleWheel, { passive: false })
-    window.addEventListener('scroll', handleNativeScroll, { passive: true })
 
     return () => {
       window.removeEventListener('wheel', handleWheel)
-      window.removeEventListener('scroll', handleNativeScroll)
       if (animationFrameId) cancelAnimationFrame(animationFrameId)
     }
   }, [loading, orders])
@@ -150,9 +161,9 @@ export default function OrdersTable() {
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount)
   }
 
@@ -511,7 +522,7 @@ export default function OrdersTable() {
         </div>
       ) : (
         <div className="p-6 flex flex-col gap-6 bg-zinc-950/20">
-          <div ref={containerRef} className="flex flex-col gap-20 pb-32">
+          <div ref={containerRef} className="relative z-10 flex flex-col gap-20 pb-32">
             {orders.map((order, index) => {
               const stateName = order.customer_state || 'DESTINATION'
               const stateCode = stateName.substring(0, 3).toUpperCase()
@@ -524,7 +535,7 @@ export default function OrdersTable() {
               return (
                 <div
                   key={order.id}
-                  className="sticky w-full h-[410px] bg-zinc-900 text-zinc-100 rounded-3xl flex hover:shadow-2xl hover:shadow-zinc-950/50 hover:scale-[1.01] hover:-translate-y-1 hover:z-50 transition-all duration-300 font-sans border border-zinc-800 select-none"
+                  className="sticky w-full h-[410px] bg-zinc-900 text-zinc-100 rounded-3xl flex hover:shadow-2xl hover:shadow-zinc-950/50 hover:border-zinc-700 hover:z-50 transition-all duration-300 font-sans border border-zinc-800 select-none"
                   style={{
                     top: `${120 + Math.min(index, 5) * 16}px`,
                     zIndex: index + 10
@@ -659,12 +670,19 @@ export default function OrdersTable() {
 
           {/* Visual fan-out overlapping ticket stack at the bottom of the list */}
           {orders.length > 0 && (
-            <div className="relative mt-12 mb-6 flex flex-col items-center justify-center pointer-events-none opacity-85 h-20">
-              <div className="absolute w-[80%] h-14 bg-zinc-900/30 border border-zinc-800/35 rounded-2xl transform translate-y-6 scale-[0.92] z-0" />
-              <div className="absolute w-[88%] h-14 bg-zinc-900/60 border border-zinc-800/65 rounded-2xl transform translate-y-3 scale-[0.96] z-10" />
-              <div className="relative w-[95%] bg-zinc-900 border border-zinc-800 text-white rounded-2xl p-4 z-20 flex items-center justify-between shadow-xl">
+            <div className="relative mt-12 mb-16 flex flex-col items-center justify-center pointer-events-none w-full">
+              {/* Layer 1 (Back-most) */}
+              <div className="absolute inset-y-0 left-0 right-0 mx-auto w-[91%] bg-zinc-900 border border-zinc-800 rounded-2xl transform translate-y-8 z-0 opacity-20" />
+              {/* Layer 2 */}
+              <div className="absolute inset-y-0 left-0 right-0 mx-auto w-[92%] bg-zinc-900 border border-zinc-800 rounded-2xl transform translate-y-6 z-10 opacity-40" />
+              {/* Layer 3 */}
+              <div className="absolute inset-y-0 left-0 right-0 mx-auto w-[93%] bg-zinc-900 border border-zinc-800 rounded-2xl transform translate-y-4 z-20 opacity-60" />
+              {/* Layer 4 */}
+              <div className="absolute inset-y-0 left-0 right-0 mx-auto w-[94%] bg-zinc-900 border border-zinc-800 rounded-2xl transform translate-y-2 z-30 opacity-80" />
+              {/* Layer 5 (Foreground) */}
+              <div className="relative w-[95%] bg-zinc-900 border border-zinc-800 text-white rounded-2xl p-4 z-40 flex items-center justify-between shadow-xl">
                 <span className="text-xs font-black uppercase tracking-[0.15em] pl-4">
-                  {totalOrders - orders.length > 0 ? `${totalOrders - orders.length}+ More Manifests (Stacked)` : 'End of Stack'}
+                  {totalOrders - (page * pageSize + orders.length) > 0 ? `${totalOrders - (page * pageSize + orders.length)}+ More Manifests (Stacked)` : 'End of Stack'}
                 </span>
                 <div className="flex gap-1 pr-4">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />

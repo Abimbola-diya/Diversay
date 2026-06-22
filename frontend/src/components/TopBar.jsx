@@ -12,7 +12,7 @@ export default function TopBar({ hideGreeting = false, onMenuToggle }) {
     const updateGreeting = () => {
       const hour = new Date().getHours()
       let greetingText = 'Hello'
-      
+
       if (hour >= 5 && hour < 12) {
         greetingText = 'Good morning'
       } else if (hour >= 12 && hour < 17) {
@@ -22,13 +22,13 @@ export default function TopBar({ hideGreeting = false, onMenuToggle }) {
       } else {
         greetingText = 'Hello'
       }
-      
+
       setGreeting(greetingText)
     }
 
     updateGreeting()
     const interval = setInterval(updateGreeting, 60000) // Update every minute
-    
+
     return () => clearInterval(interval)
   }, [])
 
@@ -36,14 +36,14 @@ export default function TopBar({ hideGreeting = false, onMenuToggle }) {
     const timer = setInterval(() => {
       setCurrentTime(new Date())
     }, 60000) // Update every minute
-    
+
     return () => clearInterval(timer)
   }, [])
 
   const formatDate = (date) => {
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
       day: 'numeric',
       year: 'numeric'
     })
@@ -75,7 +75,7 @@ export default function TopBar({ hideGreeting = false, onMenuToggle }) {
             <h2
               id="topbar-greeting"
               className="text-2xl font-bold text-white"
-              style={{ 
+              style={{
                 visibility: hideGreeting ? 'hidden' : 'visible',
                 fontFamily: '"Lora", Georgia, serif',
                 fontStyle: 'normal'

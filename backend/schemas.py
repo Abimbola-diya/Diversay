@@ -121,6 +121,7 @@ class OrderLineItemResponse(BaseModel):
     quantity: float
     unit: UnitType
     unit_price: float
+    total_price: Optional[float] = None
     created_at: datetime
     
     class Config:

@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import api from '../services/api'
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Calendar, 
-  Truck, 
-  FileText, 
-  Activity, 
-  User, 
-  Hash, 
-  DollarSign, 
-  CheckCircle2, 
-  Clock, 
+import {
+  ArrowLeft,
+  MapPin,
+  Calendar,
+  Truck,
+  FileText,
+  Activity,
+  User,
+  Hash,
+  DollarSign,
+  CheckCircle2,
+  Clock,
   AlertTriangle,
   Info
 } from 'lucide-react'
@@ -31,11 +31,11 @@ export default function OrderDetailPage() {
   const fetchOrderDetails = async () => {
     try {
       setLoading(true)
-      
+
       // Fetch order details
       const orderRes = await api.get(`/orders/${id}`)
       setOrder(orderRes.data)
-      
+
       // Fetch audit logs
       try {
         const auditRes = await api.get(`/orders/${id}/audit-log`)
@@ -43,7 +43,7 @@ export default function OrderDetailPage() {
       } catch (auditErr) {
         console.error("Failed to load audit logs for order:", auditErr)
       }
-      
+
       setError(null)
     } catch (err) {
       console.error("Failed to fetch order details:", err)
@@ -54,10 +54,29 @@ export default function OrderDetailPage() {
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount)
+  }
+
+  const formatPhoneNumber = (phone) => {
+    if (!phone) return 'N/A'
+    const cleaned = phone.replace(/\D/g, '')
+    if (!cleaned) return phone
+    let localNumber = cleaned
+    if (localNumber.startsWith('234')) {
+      localNumber = localNumber.slice(3)
+    } else if (localNumber.startsWith('0')) {
+      localNumber = localNumber.slice(1)
+    }
+    if (localNumber.length === 10) {
+      const part1 = localNumber.slice(0, 3)
+      const part2 = localNumber.slice(3, 6)
+      const part3 = localNumber.slice(6)
+      return `(+234) ${part1}-${part2}-${part3}`
+    }
+    return `(+234) ${localNumber}`
   }
 
   const formatDate = (dateString) => {
@@ -100,8 +119,8 @@ export default function OrderDetailPage() {
       <div className="max-w-3xl mx-auto mt-8 bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center">
         <AlertTriangle size={48} className="mx-auto text-red-400 mb-4" />
         <p className="text-zinc-300 font-semibold text-lg">{error || "Order not found"}</p>
-        <Link 
-          to="/orders" 
+        <Link
+          to="/orders"
           className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-all"
         >
           <ArrowLeft size={16} /> Back to Orders
@@ -118,8 +137,8 @@ export default function OrderDetailPage() {
       {/* Navigation & Actions Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-          <Link 
-            to="/orders" 
+          <Link
+            to="/orders"
             className="inline-flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-3 text-sm"
           >
             <ArrowLeft size={16} /> Back to Orders
@@ -158,20 +177,17 @@ export default function OrderDetailPage() {
 
           {/* Connective pipeline bar */}
           <div className="flex flex-col items-center justify-center px-4 relative lg:col-span-1">
-            <div className="text-[10px] font-mono font-bold text-zinc-500 uppercase mb-2">Transit</div>
-            <div className="w-full lg:w-24 h-[3px] bg-zinc-800 rounded-full relative">
-              <div 
-                className={`absolute left-0 top-0 bottom-0 rounded-full bg-cyan-500 transition-all duration-500 ${
-                  order.order_status.startsWith('Delivered') ? 'w-full' : order.order_status === 'In Transit' ? 'w-1/2' : 'w-0'
-                }`}
-              />
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 border-t-2 border-r-2 border-zinc-600 rotate-45" />
+            <div className="text-[13px] font-mono font-bold text-zinc-400 uppercase tracking-[0.25em] mb-3">Transit</div>
+            <div className="text-red-500 flex items-center justify-center w-full">
+              <svg className="w-32 h-6" fill="none" viewBox="0 0 128 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 12h120M114 5l10 7-10 7" />
+              </svg>
             </div>
           </div>
 
           {/* Destination */}
           <div className="lg:col-span-2 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/80 flex items-start gap-3">
-            <div className="p-2 bg-cyan-950/40 text-cyan-400 rounded-lg">
+            <div className="p-2 bg-white/10 text-white shadow-[0_0_12px_rgba(255,255,255,0.25)] border border-white/20 rounded-lg">
               <MapPin size={18} />
             </div>
             <div className="min-w-0 flex-1">
@@ -189,17 +205,17 @@ export default function OrderDetailPage() {
 
       {/* Details Ledger and Audit log section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         {/* Left Column (Main Information) */}
         <div className="lg:col-span-2 space-y-8">
-          
+
           {/* Order Details Manifest Card */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-6 flex items-center gap-2">
               <FileText size={16} className="text-zinc-500" />
               Manifest Specifications
             </h3>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div>
                 <span className="text-xs text-zinc-500 font-medium block">Waybill Number</span>
@@ -271,16 +287,16 @@ export default function OrderDetailPage() {
               <DollarSign size={16} className="text-zinc-500" />
               Consignment Ledger
             </h3>
-            
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-zinc-850 bg-zinc-950/30">
                     <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400">Product Specification</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400">Unit Type</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400">Quantity</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400">Rate</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400">Line Subtotal</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-zinc-400">Quantity</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-zinc-400">Rate</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-zinc-400">Line Subtotal</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-850">
@@ -288,9 +304,9 @@ export default function OrderDetailPage() {
                     <tr key={idx} className="hover:bg-zinc-850/10 transition-colors">
                       <td className="px-4 py-4 text-sm font-bold text-white">{item.product_name}</td>
                       <td className="px-4 py-4 text-sm text-right text-zinc-400 capitalize">{item.unit}</td>
-                      <td className="px-4 py-4 text-sm text-right text-zinc-300 font-mono">{item.quantity}</td>
-                      <td className="px-4 py-4 text-sm text-right text-zinc-400 font-mono">{formatCurrency(item.unit_price)}</td>
-                      <td className="px-4 py-4 text-sm text-right text-white font-semibold font-mono">{formatCurrency(item.total_price)}</td>
+                      <td className="px-4 py-4 text-sm text-center text-zinc-300 font-mono">{item.quantity}</td>
+                      <td className="px-4 py-4 text-sm text-center text-zinc-400" style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.unit_price)}</td>
+                      <td className="px-4 py-4 text-sm text-center text-white font-semibold" style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.total_price || (item.unit_price * item.quantity))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -300,14 +316,14 @@ export default function OrderDetailPage() {
             {/* Total Section */}
             <div className="mt-6 pt-6 border-t border-zinc-800 flex justify-between items-center bg-zinc-950/40 p-4 rounded-xl border border-zinc-850">
               <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Invoice Sum Total</span>
-              <span className="text-2xl font-extrabold text-cyan-400 font-mono">{formatCurrency(order.total_amount)}</span>
+              <span className="text-2xl font-extrabold text-green-400" style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(order.total_amount)}</span>
             </div>
           </div>
         </div>
 
         {/* Right Column (Sidebar Information) */}
         <div className="space-y-8">
-          
+
           {/* Customer registry details */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-6 flex items-center gap-2">
@@ -320,12 +336,12 @@ export default function OrderDetailPage() {
                 <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">Company Name</span>
                 <span className="text-sm font-bold text-white block mt-0.5">{order.customer_name}</span>
               </div>
-              
+
               <div>
                 <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">Fulfillment State</span>
                 <span className="text-sm text-zinc-300 block mt-0.5">{order.customer_state || 'N/A'}</span>
               </div>
-              
+
               <div>
                 <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">Contact Email</span>
                 <span className="text-sm text-zinc-300 block mt-0.5 font-mono truncate">{order.customer?.email || 'N/A'}</span>
@@ -333,7 +349,7 @@ export default function OrderDetailPage() {
 
               <div>
                 <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">Direct Phone Line</span>
-                <span className="text-sm text-zinc-300 block mt-0.5 font-mono">{order.customer?.contact_number || 'N/A'}</span>
+                <span className="text-sm text-zinc-300 block mt-0.5 font-mono">{formatPhoneNumber(order.customer?.contact_number)}</span>
               </div>
 
               <div className="pt-4 border-t border-zinc-800">
@@ -366,7 +382,7 @@ export default function OrderDetailPage() {
                   <div key={idx} className="relative">
                     {/* timeline node dot */}
                     <span className="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-cyan-500 ring-4 ring-zinc-900" />
-                    
+
                     <div className="flex flex-col gap-0.5">
                       <div className="text-xs font-bold text-white capitalize">
                         {log.action.replace(/_/g, ' ')}

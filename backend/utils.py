@@ -164,6 +164,32 @@ def get_order_with_details(order: Order) -> dict:
     # Calculate total amount
     total_amount = sum(item.unit_price * item.quantity for item in order.line_items)
     
+    customer_dict = None
+    if order.customer:
+        customer_dict = {
+            "id": order.customer.id,
+            "name": order.customer.name,
+            "address": order.customer.address,
+            "city": order.customer.city,
+            "state": order.customer.state,
+            "contact_number": order.customer.contact_number,
+            "email": order.customer.email,
+            "created_at": order.customer.created_at,
+            "updated_at": order.customer.updated_at
+        }
+
+    user_dict = None
+    if order.created_by_user:
+        user_dict = {
+            "id": order.created_by_user.id,
+            "email": order.created_by_user.email,
+            "full_name": order.created_by_user.full_name,
+            "role": order.created_by_user.role.value if order.created_by_user.role else None,
+            "is_active": order.created_by_user.is_active,
+            "created_at": order.created_by_user.created_at,
+            "requesting_admin": order.created_by_user.requesting_admin
+        }
+
     return {
         "id": order.id,
         "order_number": order.order_number,
@@ -183,6 +209,8 @@ def get_order_with_details(order: Order) -> dict:
         "vehicle_number": order.vehicle_number,
         "created_by_id": order.created_by_id,
         "created_by_name": order.created_by_user.full_name if order.created_by_user else None,
+        "created_by_user": user_dict,
+        "customer": customer_dict,
         "created_at": order.created_at,
         "updated_at": order.updated_at,
         "total_amount": total_amount,

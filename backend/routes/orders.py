@@ -148,7 +148,28 @@ def list_orders(
         query = query.join(OrderLineItem).filter(OrderLineItem.product_id == product_id)
     
     if order_number:
-        query = query.filter(Order.order_number.ilike(f"%{order_number}%"))
+        search_val = order_number.strip()
+        customer_exists = db.query(Customer.id).filter(
+            Customer.name.ilike(f"%{search_val}%"),
+            Customer.is_deleted == False
+        ).subquery()
+        product_exists = db.query(OrderLineItem.order_id).join(Product).filter(
+            Product.name.ilike(f"%{search_val}%"),
+            Product.is_deleted == False
+        ).subquery()
+        query = query.filter(
+            or_(
+                Order.order_number.ilike(f"%{search_val}%"),
+                Order.waybill_number.ilike(f"%{search_val}%"),
+                Order.invoice_number.ilike(f"%{search_val}%"),
+                Order.driver_name.ilike(f"%{search_val}%"),
+                Order.customer_id.in_(customer_exists),
+                Order.id.in_(product_exists)
+            )
+        )
+    
+    if status:
+        query = query.filter(Order.order_status == status)
     
     if start_date:
         query = query.filter(Order.dispatch_time >= start_date)
