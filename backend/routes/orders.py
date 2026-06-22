@@ -127,36 +127,40 @@ def list_orders(
         joinedload(Order.line_items).joinedload(OrderLineItem.product)
     )
     
-    if state:
-        query = query.join(Customer).filter(Customer.state == state)
-    
-    if city:
-        query = query.join(Customer).filter(Customer.city == city)
-    
+    # Apply joins exactly once to prevent duplicate join clauses in SQLAlchemy
+    if state or city or customer_name:
+        query = query.join(Customer)
+        if state:
+            query = query.filter(Customer.state.ilike(f"%{state.strip()}%"))
+        if city:
+            query = query.filter(Customer.city.ilike(f"%{city.strip()}%"))
+        if customer_name:
+            query = query.filter(Customer.name.ilike(f"%{customer_name.strip()}%"))
+
     if customer_id:
         query = query.filter(Order.customer_id == customer_id)
-    
-    if customer_name:
-        query = query.join(Customer).filter(Customer.name.ilike(f"%{customer_name}%"))
-    
-    if product_name:
-        query = query.join(OrderLineItem).join(Product).filter(
-            Product.name.ilike(f"%{product_name}%")
-        )
-    
-    if product_id:
-        query = query.join(OrderLineItem).filter(OrderLineItem.product_id == product_id)
+
+    if product_id or product_name:
+        query = query.join(OrderLineItem)
+        if product_id:
+            query = query.filter(OrderLineItem.product_id == product_id)
+        if product_name:
+            query = query.join(Product).filter(Product.name.ilike(f"%{product_name.strip()}%"))
     
     if order_number:
         search_val = order_number.strip()
         customer_exists = db.query(Customer.id).filter(
-            Customer.name.ilike(f"%{search_val}%"),
+            or_(
+                Customer.name.ilike(f"%{search_val}%"),
+                Customer.state.ilike(f"%{search_val}%"),
+                Customer.city.ilike(f"%{search_val}%")
+            ),
             Customer.is_deleted == False
-        ).subquery()
+        )
         product_exists = db.query(OrderLineItem.order_id).join(Product).filter(
             Product.name.ilike(f"%{search_val}%"),
             Product.is_deleted == False
-        ).subquery()
+        )
         query = query.filter(
             or_(
                 Order.order_number.ilike(f"%{search_val}%"),

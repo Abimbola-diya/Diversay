@@ -18,6 +18,7 @@ export default function OrdersTable() {
   const [dateRange, setDateRange] = useState('30days')
   const [expandedRows, setExpandedRows] = useState(new Set())
   const [scrollPosition, setScrollPosition] = useState({})
+  const fetchRequestRef = useRef(0)
 
   const pageSize = 15
 
@@ -40,6 +41,7 @@ export default function OrdersTable() {
   }, [])
 
   const fetchOrders = async () => {
+    const requestId = ++fetchRequestRef.current
     try {
       setLoading(true)
 
@@ -63,14 +65,20 @@ export default function OrdersTable() {
       }
 
       const response = await api.get('/orders', { params })
-      setOrders(response.data.items || [])
-      setTotalOrders(response.data.total || 0)
-      setError(null)
+      if (requestId === fetchRequestRef.current) {
+        setOrders(response.data.items || [])
+        setTotalOrders(response.data.total || 0)
+        setError(null)
+      }
     } catch (err) {
-      console.error('Failed to fetch orders:', err)
-      setError('Failed to load orders')
+      if (requestId === fetchRequestRef.current) {
+        console.error('Failed to fetch orders:', err)
+        setError('Failed to load orders')
+      }
     } finally {
-      setLoading(false)
+      if (requestId === fetchRequestRef.current) {
+        setLoading(false)
+      }
     }
   }
 
