@@ -573,8 +573,8 @@ export default function CustomersPage() {
 
             {/* Map Legend */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-zinc-950 border border-zinc-900 rounded-xl p-4 gap-4 mt-6 text-xs text-zinc-400">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <span className="font-semibold text-zinc-500 uppercase tracking-widest text-[10px] mt-1 sm:mt-0">Distribution Scale:</span>
+              <div className="flex flex-col sm:flex-row items-start gap-4">
+                <span className="font-semibold text-zinc-500 uppercase tracking-widest text-[10px] mt-1 sm:mt-0.5">Distribution Scale:</span>
                 
                 {/* 2-Column Grid */}
                 <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
