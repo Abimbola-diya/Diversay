@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle } from 'lucide-react'
 import api from '../services/api'
 
@@ -11,16 +11,21 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
   if (filtered.length === 0) return null
 
   return (
-    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
-      <ul className="divide-y divide-zinc-750">
+    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-850 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+      <ul className="divide-y divide-zinc-800">
         {filtered.map((product) => (
           <li key={product.id}>
             <button
               type="button"
               onClick={() => onSelect(product)}
-              className="w-full px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-750/50 transition-colors"
+              className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700/55 transition-colors flex justify-between items-center"
             >
-              {product.name}
+              <span className="font-medium text-zinc-100">{product.name}</span>
+              {product.category && (
+                <span className="text-[10px] text-zinc-400 font-semibold px-2 py-0.5 bg-zinc-800 rounded uppercase tracking-wider">
+                  {product.category}
+                </span>
+              )}
             </button>
           </li>
         ))}
@@ -29,8 +34,47 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
   )
 }
 
+const searchCustomersLocally = (query, customersList) => {
+  if (!query) return []
+  const queryLower = query.toLowerCase().trim()
+  const queryWords = queryLower.split(/\s+/).filter(Boolean)
+  
+  return customersList
+    .map(c => {
+      const nameLower = c.name.toLowerCase()
+      let score = 0
+      
+      // 1. Starts with query
+      if (nameLower.startsWith(queryLower)) {
+        score += 5
+      }
+      
+      // 2. Any word starts with query
+      const words = nameLower.split(/\s+/)
+      if (words.some(w => w.startsWith(queryLower))) {
+        score += 3
+      }
+      
+      // 3. Substring match
+      if (nameLower.includes(queryLower)) {
+        score += 2
+      }
+      
+      // 4. Any query word matches any customer name word
+      if (queryWords.length > 0 && queryWords.every(qw => nameLower.includes(qw))) {
+        score += 1.5
+      }
+      
+      return { customer: c, score }
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.customer.name.localeCompare(b.customer.name))
+    .map(item => item.customer)
+}
+
 export default function CreateOrderModal({ isOpen, onClose }) {
   const [products, setProducts] = useState([])
+  const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
@@ -85,9 +129,14 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     try {
       setLoading(true)
       setError(null)
-      const productsRes = await api.get('/products', { params: { limit: 100 } })
+      const [productsRes, customersRes] = await Promise.all([
+        api.get('/products', { params: { limit: 100 } }),
+        api.get('/customers', { params: { limit: 1000 } })
+      ])
       const fetchedProducts = productsRes.data.items || []
+      const fetchedCustomers = customersRes.data.items || []
       setProducts(fetchedProducts)
+      setCustomers(fetchedCustomers)
 
       // Initialize searchQuery for line items if pre-selected
       setBatchOrders(prevOrders => prevOrders.map(order => ({
@@ -102,7 +151,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       })))
     } catch (err) {
       console.error('Failed to load form data:', err)
-      setError('Failed to load products. Please try again.')
+      setError('Failed to load form data. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -135,36 +184,20 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   }
 
   // Fuzzy search customers scoped to specific order index
-  const handleCustomerSearch = async (orderId, query) => {
+  const handleCustomerSearch = (orderId, query) => {
+    const matched = searchCustomersLocally(query, customers)
     setBatchOrders(prev => prev.map(o => {
       if (o.id === orderId) {
-        return { ...o, customerSearchQuery: query, customerId: '', showCustomerDropdown: true }
+        return {
+          ...o,
+          customerSearchQuery: query,
+          customerId: '',
+          showCustomerDropdown: true,
+          matchingCustomers: matched.slice(0, 4)
+        }
       }
       return o
     }))
-
-    if (!query.trim()) {
-      setBatchOrders(prev => prev.map(o => {
-        if (o.id === orderId) {
-          return { ...o, matchingCustomers: [] }
-        }
-        return o
-      }))
-      return
-    }
-
-    try {
-      const res = await api.get('/customers/search', { params: { q: query } })
-      const matched = res.data.slice(0, 4) || []
-      setBatchOrders(prev => prev.map(o => {
-        if (o.id === orderId && o.customerSearchQuery === query) {
-          return { ...o, matchingCustomers: matched }
-        }
-        return o
-      }))
-    } catch (err) {
-      console.error('Customer search error:', err)
-    }
   }
 
   // Select customer from dropdown scoped to specific order
@@ -557,7 +590,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                       {order.lineItems.map((item, itemIdx) => (
                         <div 
                           key={itemIdx} 
-                          className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/20 p-3 rounded-xl border border-zinc-850"
+                          className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/20 p-3 rounded-xl border border-zinc-800"
                         >
                           <div className="flex-1 w-full relative product-search-container">
                             <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Product</label>
@@ -660,7 +693,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
             <button
               type="button"
               onClick={handleAddOrder}
-              className="flex items-center gap-2 px-6 py-3 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-white font-semibold rounded-2xl shadow-lg transition-all duration-200"
+              className="flex items-center gap-2 px-6 py-3 bg-zinc-900 hover:bg-white border border-zinc-800 hover:border-white text-white hover:text-zinc-900 font-semibold rounded-2xl shadow-lg transition-all duration-200"
             >
               <Plus size={18} />
               Add Another Customer Order

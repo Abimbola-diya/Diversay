@@ -49,8 +49,34 @@ def search_customers(
     current_user: User = Depends(get_current_user)
 ):
     """Fuzzy search customers by name."""
-    all_customers = db.query(Customer).filter(Customer.is_deleted == False).all()
+    q_clean = q.strip()
+    if not q_clean:
+        return []
+        
+    words = [w for w in q_clean.split() if w]
     
+    from sqlalchemy import or_
+    
+    # Pre-filter using case-insensitive SQL matching (ILIKE) on query words
+    conditions = [Customer.name.ilike(f"%{word}%") for word in words]
+    
+    candidates = db.query(Customer).filter(
+        Customer.is_deleted == False,
+        or_(*conditions) if conditions else Customer.name.ilike(f"%{q_clean}%")
+    ).limit(150).all()
+    
+    # Fallback to include recent customers if the candidate set is very small
+    if len(candidates) < 30:
+        fallback_count = 150 - len(candidates)
+        fallback_customers = db.query(Customer).filter(
+            Customer.is_deleted == False
+        ).order_by(Customer.updated_at.desc()).limit(fallback_count).all()
+        
+        seen_ids = {c.id for c in candidates}
+        for c in fallback_customers:
+            if c.id not in seen_ids:
+                candidates.append(c)
+                
     customers_list = [
         {
             "id": c.id,
@@ -61,10 +87,10 @@ def search_customers(
             "contact_number": c.contact_number,
             "email": c.email
         }
-        for c in all_customers
+        for c in candidates
     ]
     
-    results = fuzzy_search_customers(q, customers_list, threshold=0.5)
+    results = fuzzy_search_customers(q_clean, customers_list, threshold=0.5)
     
     return results[:20]
 

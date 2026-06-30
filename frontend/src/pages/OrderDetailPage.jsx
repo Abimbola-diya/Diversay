@@ -28,16 +28,21 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
   if (filtered.length === 0) return null
 
   return (
-    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
-      <ul className="divide-y divide-zinc-750">
+    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-850 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+      <ul className="divide-y divide-zinc-800">
         {filtered.map((product) => (
           <li key={product.id}>
             <button
               type="button"
               onClick={() => onSelect(product)}
-              className="w-full px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700/50 transition-colors"
+              className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700/55 transition-colors flex justify-between items-center"
             >
-              {product.name}
+              <span className="font-medium text-zinc-100">{product.name}</span>
+              {product.category && (
+                <span className="text-[10px] text-zinc-400 font-semibold px-2 py-0.5 bg-zinc-800 rounded uppercase tracking-wider">
+                  {product.category}
+                </span>
+              )}
             </button>
           </li>
         ))}
@@ -52,6 +57,94 @@ export default function OrderDetailPage() {
   const [auditLogs, setAuditLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // Preview state
+  const [previewCommit, setPreviewCommit] = useState(null)
+
+  const handlePreviewCommit = (log, detailsObj, idx) => {
+    if (previewCommit?.id === log.id) {
+      setPreviewCommit(null)
+    } else {
+      const prevSnapshot = getPreviousSnapshot(idx)
+      setPreviewCommit({
+        id: log.id,
+        commit_hash: detailsObj.commit_hash,
+        author: log.user_name || "Operator",
+        timestamp: log.timestamp,
+        state_snapshot: detailsObj.state_snapshot,
+        previous_snapshot: prevSnapshot
+      })
+    }
+  }
+
+  const isFieldDifferent = (key, val) => {
+    if (!previewCommit) return false
+    const dateFields = ['dispatch_time', 'expected_delivery_time', 'actual_delivery_time']
+    const currentVal = order[key]
+    
+    if (dateFields.includes(key)) {
+      const parseAsUtcIfNaive = (dateString) => {
+        if (!dateString) return null
+        let s = dateString
+        if (typeof s === 'string' && !s.includes('Z') && !/\+\d{2}:\d{2}$/.test(s) && !/-\d{2}:\d{2}$/.test(s)) {
+          s = s + 'Z'
+        }
+        try {
+          const ms = new Date(s).getTime()
+          return isNaN(ms) ? null : ms
+        } catch {
+          return null
+        }
+      }
+      return parseAsUtcIfNaive(currentVal) !== parseAsUtcIfNaive(val)
+    }
+    
+    return (currentVal || '').toString().trim() !== (val || '').toString().trim()
+  }
+
+  const getFieldDiffMarker = (key, val) => {
+    if (!previewCommit) return null
+    if (!isFieldDifferent(key, val)) return null
+    
+    const dateFields = ['dispatch_time', 'expected_delivery_time', 'actual_delivery_time']
+    const currentVal = order[key]
+    let formattedVal = currentVal
+    if (dateFields.includes(key) && currentVal) {
+      formattedVal = formatDate(currentVal)
+    }
+    return (
+      <span className="text-[10px] text-white/40 font-medium block mt-0.5 leading-none">
+        Current: {formattedVal || 'N/A'}
+      </span>
+    )
+  }
+
+  const isLineItemDifferent = (item) => {
+    if (!previewCommit) return false
+    const currentItem = order.line_items?.find(it => it.product_id === item.product_id)
+    if (!currentItem) return true
+    return currentItem.quantity !== item.quantity || currentItem.unit !== item.unit
+  }
+
+  const getLineItemDiffMarker = (item) => {
+    if (!previewCommit) return null
+    const currentItem = order.line_items?.find(it => it.product_id === item.product_id)
+    if (!currentItem) {
+      return (
+        <span className="text-[9px] text-white/40 font-medium block mt-0.5 leading-none">
+          Current: Not in order
+        </span>
+      )
+    }
+    if (currentItem.quantity !== item.quantity || currentItem.unit !== item.unit) {
+      return (
+        <span className="text-[9px] text-white/40 font-medium block mt-0.5 leading-none">
+          Current: {currentItem.quantity} {currentItem.unit}
+        </span>
+      )
+    }
+    return null
+  }
 
   // Products state for editing
   const [products, setProducts] = useState([])
@@ -69,6 +162,142 @@ export default function OrderDetailPage() {
   const [editLineItems, setEditLineItems] = useState([])
   const [commitMessage, setCommitMessage] = useState('')
   const [activeProductSearchIndex, setActiveProductSearchIndex] = useState(null)
+
+  const getPreviousSnapshot = (currentIdx) => {
+    for (let i = currentIdx + 1; i < auditLogs.length; i++) {
+      const log = auditLogs[i]
+      try {
+        const detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details
+        if (detailsObj && detailsObj.state_snapshot) {
+          return detailsObj.state_snapshot
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return null
+  }
+
+  const getSnapshotDiff = (prev, curr) => {
+    if (!curr) return []
+    if (!prev) {
+      return [{ type: 'info', text: 'Initial order creation' }]
+    }
+
+    const changes = []
+
+    const fields = [
+      { key: 'waybill_number', label: 'Waybill Number' },
+      { key: 'invoice_number', label: 'Invoice Number' },
+      { key: 'driver_name', label: 'Driver Name' },
+      { key: 'vehicle_number', label: 'Vehicle Number' },
+      { key: 'notes', label: 'Notes' }
+    ]
+
+    fields.forEach(({ key, label }) => {
+      const prevVal = (prev[key] || '').toString().trim()
+      const currVal = (curr[key] || '').toString().trim()
+      if (prevVal !== currVal) {
+        changes.push({
+          type: 'modify',
+          text: `Changed ${label} from "${prevVal || 'N/A'}" to "${currVal || 'N/A'}"`
+        })
+      }
+    })
+
+    const dateFields = [
+      { key: 'dispatch_time', label: 'Dispatch Time' },
+      { key: 'expected_delivery_time', label: 'Expected Delivery Time' },
+      { key: 'actual_delivery_time', label: 'Actual Delivery Time' }
+    ]
+
+    const parseAsUtcIfNaive = (dateString) => {
+      if (!dateString) return null
+      let s = dateString
+      if (typeof s === 'string' && !s.includes('Z') && !/\+\d{2}:\d{2}$/.test(s) && !/-\d{2}:\d{2}$/.test(s)) {
+        s = s + 'Z'
+      }
+      try {
+        const ms = new Date(s).getTime()
+        return isNaN(ms) ? null : ms
+      } catch {
+        return null
+      }
+    }
+
+    const formatTime = (isoStr) => {
+      if (!isoStr) return 'N/A'
+      try {
+        let s = isoStr
+        if (typeof s === 'string' && !s.includes('Z') && !/\+\d{2}:\d{2}$/.test(s) && !/-\d{2}:\d{2}$/.test(s)) {
+          s = s + 'Z'
+        }
+        return new Date(s).toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      } catch {
+        return isoStr
+      }
+    }
+
+    dateFields.forEach(({ key, label }) => {
+      const prevMs = parseAsUtcIfNaive(prev[key])
+      const currMs = parseAsUtcIfNaive(curr[key])
+      if (prevMs !== currMs) {
+        const prevVal = prev[key] ? formatTime(prev[key]) : 'N/A'
+        const currVal = curr[key] ? formatTime(curr[key]) : 'N/A'
+        changes.push({
+          type: 'modify',
+          text: `Changed ${label} from ${prevVal} to ${currVal}`
+        })
+      }
+    })
+
+    const prevItems = prev.line_items || []
+    const currItems = curr.line_items || []
+
+    const prevMap = {}
+    prevItems.forEach(item => {
+      prevMap[item.product_id] = item
+    })
+
+    const currMap = {}
+    currItems.forEach(item => {
+      currMap[item.product_id] = item
+    })
+
+    prevItems.forEach(prevItem => {
+      const currItem = currMap[prevItem.product_id]
+      if (!currItem) {
+        changes.push({
+          type: 'delete',
+          text: `Removed ${prevItem.product_name || 'Product'} (${prevItem.quantity} ${prevItem.unit})`
+        })
+      } else {
+        if (prevItem.quantity !== currItem.quantity || prevItem.unit !== currItem.unit) {
+          changes.push({
+            type: 'modify',
+            text: `Updated ${currItem.product_name || 'Product'}: ${prevItem.quantity} ${prevItem.unit} → ${currItem.quantity} ${currItem.unit}`
+          })
+        }
+      }
+    })
+
+    currItems.forEach(currItem => {
+      const prevItem = prevMap[currItem.product_id]
+      if (!prevItem) {
+        changes.push({
+          type: 'add',
+          text: `Added ${currItem.product_name || 'Product'} (${currItem.quantity} ${currItem.unit})`
+        })
+      }
+    })
+
+    return changes
+  }
 
   useEffect(() => {
     fetchOrderDetails()
@@ -161,7 +390,11 @@ export default function OrderDetailPage() {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A'
     try {
-      return new Date(dateString).toLocaleString('en-US', {
+      let s = dateString
+      if (typeof s === 'string' && !s.includes('Z') && !/\+\d{2}:\d{2}$/.test(s) && !/-\d{2}:\d{2}$/.test(s)) {
+        s = s.endsWith(' ') ? s.trim() + 'Z' : s + 'Z'
+      }
+      return new Date(s).toLocaleString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -176,14 +409,18 @@ export default function OrderDetailPage() {
   const formatForInput = (dateString) => {
     if (!dateString) return ''
     try {
-      const date = new Date(dateString)
+      let s = dateString
+      if (typeof s === 'string' && !s.includes('Z') && !/\+\d{2}:\d{2}$/.test(s) && !/-\d{2}:\d{2}$/.test(s)) {
+        s = s + 'Z'
+      }
+      const date = new Date(s)
       const pad = (num) => String(num).padStart(2, '0')
       const yyyy = date.getFullYear()
       const mm = pad(date.getMonth() + 1)
       const dd = pad(date.getDate())
-      const hh = pad(date.getHours())
-      const min = pad(date.getMinutes())
-      return `${yyyy}-${mm}-${dd}T${hh}:${min}`
+      const hh = date.getHours()
+      const min = date.getMinutes()
+      return `${yyyy}-${mm}-${dd}T${pad(hh)}:${pad(min)}`
     } catch {
       return ''
     }
@@ -350,8 +587,7 @@ export default function OrderDetailPage() {
         </Link>
       </div>
     )
-  }
-
+  }  const displayOrder = previewCommit ? previewCommit.state_snapshot : order
   const statusConfig = getStatusConfig(order.order_status)
   const StatusIcon = statusConfig.icon
 
@@ -375,7 +611,7 @@ export default function OrderDetailPage() {
           </div>
         </div>
         <div className="flex flex-col md:items-end gap-2">
-          {!isEditing && (
+          {!isEditing && !previewCommit && (
             <button
               onClick={handleStartEdit}
               className="px-4 py-2 border border-zinc-750 hover:border-white bg-transparent hover:bg-white text-zinc-300 hover:text-zinc-900 font-semibold rounded-xl transition-all duration-200 text-sm flex items-center gap-2"
@@ -389,6 +625,48 @@ export default function OrderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Preview Mode Alert Banner */}
+      {previewCommit && (
+        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
+          {/* Status info box (narrow/auto width, doesn't stretch long) */}
+          <div className="inline-flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4 w-fit">
+            <div className="p-2 bg-yellow-500/10 text-yellow-400 rounded-xl shrink-0">
+              <Info size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="text-sm font-bold text-yellow-400 block">
+                Preview Mode: Commit [{previewCommit.commit_hash}]
+              </span>
+              <span className="text-xs text-zinc-400">
+                Viewing manifest state as of {formatDate(previewCommit.timestamp)} by {previewCommit.author}.
+              </span>
+            </div>
+          </div>
+          
+          {/* Buttons on the side on their own */}
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => setPreviewCommit(null)}
+              className="px-4 py-2 bg-transparent border border-white/60 hover:bg-white text-white hover:text-zinc-950 font-semibold rounded-xl transition-all duration-200 text-xs"
+            >
+              Exit Preview
+            </button>
+            <button
+              onClick={() => {
+                const logItem = auditLogs.find(l => l.id === previewCommit.id)
+                handleRevert(logItem || previewCommit, {
+                  commit_hash: previewCommit.commit_hash,
+                  state_snapshot: previewCommit.state_snapshot
+                })
+              }}
+              className="px-4 py-2 bg-transparent border border-white hover:bg-white text-white hover:text-zinc-950 font-semibold rounded-xl transition-all duration-200 text-xs"
+            >
+              Revert to this State
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Transit Route Progress Visualizer */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 mb-8 shadow-xl">
@@ -423,17 +701,17 @@ export default function OrderDetailPage() {
           </div>
 
           {/* Destination */}
-          <div className="lg:col-span-1 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/80 flex items-start gap-3">
-            <div className="p-2 bg-white/10 text-white shadow-[0_0_12px_rgba(255,255,255,0.25)] border border-white/20 rounded-lg">
+          <div className="lg:col-span-1 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/80 flex items-start gap-3 text-white">
+            <div className="p-2 bg-white/10 text-white shadow-[0_0_12px_rgba(255,255,255,0.25)] border border-white/20 rounded-lg shrink-0">
               <MapPin size={18} />
             </div>
             <div className="min-w-0 flex-1">
               <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Destination Address</span>
-              <span className="text-sm text-white font-bold block mt-0.5 truncate" title={order.customer_address}>
-                {order.customer_address || "No Address Registry"}
+              <span className="text-sm text-white font-bold block mt-0.5 truncate" title={displayOrder.customer_address}>
+                {displayOrder.customer_address || "No Address Registry"}
               </span>
               <span className="text-xs text-zinc-400 block mt-0.5">
-                {order.customer_state || "N/A"} State, Nigeria
+                {displayOrder.customer_state || "N/A"} State, Nigeria
               </span>
             </div>
           </div>
@@ -531,66 +809,74 @@ export default function OrderDetailPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                 <div>
-                  <span className="text-xs text-zinc-500 font-medium block">Waybill Number</span>
-                  <span className="text-sm text-white font-mono font-semibold block mt-1">
-                    {order.waybill_number || "N/A"}
+                  <span className="text-xs text-zinc-300 font-medium block">Waybill Number</span>
+                  <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('waybill_number', displayOrder.waybill_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                    {displayOrder.waybill_number || "N/A"}
                   </span>
+                  {getFieldDiffMarker('waybill_number', displayOrder.waybill_number)}
                 </div>
                 <div>
-                  <span className="text-xs text-zinc-500 font-medium block">Invoice Number</span>
-                  <span className="text-sm text-white font-mono font-semibold block mt-1">
-                    {order.invoice_number || "N/A"}
+                  <span className="text-xs text-zinc-300 font-medium block">Invoice Number</span>
+                  <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('invoice_number', displayOrder.invoice_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                    {displayOrder.invoice_number || "N/A"}
                   </span>
+                  {getFieldDiffMarker('invoice_number', displayOrder.invoice_number)}
                 </div>
                 <div>
-                  <span className="text-xs text-zinc-500 font-medium block">Driver Name</span>
-                  <span className="text-sm text-white font-semibold block mt-1">
-                    {order.driver_name || "N/A"}
+                  <span className="text-xs text-zinc-300 font-medium block">Driver Name</span>
+                  <span className={`text-sm block mt-1 ${isFieldDifferent('driver_name', displayOrder.driver_name) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                    {displayOrder.driver_name || "N/A"}
                   </span>
+                  {getFieldDiffMarker('driver_name', displayOrder.driver_name)}
                 </div>
                 <div>
-                  <span className="text-xs text-zinc-500 font-medium block">Vehicle Registration</span>
-                  <span className="text-sm text-white font-mono font-semibold block mt-1">
-                    {order.vehicle_number || "N/A"}
+                  <span className="text-xs text-zinc-300 font-medium block">Vehicle Registration</span>
+                  <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('vehicle_number', displayOrder.vehicle_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                    {displayOrder.vehicle_number || "N/A"}
                   </span>
+                  {getFieldDiffMarker('vehicle_number', displayOrder.vehicle_number)}
                 </div>
                 <div>
-                  <span className="text-xs text-zinc-500 font-medium block">Dispatch Departure</span>
-                  <span className="text-sm text-white block mt-1">
-                    {formatDate(order.dispatch_time)}
+                  <span className="text-xs text-zinc-300 font-medium block">Dispatch Departure</span>
+                  <span className={`text-sm block mt-1 ${isFieldDifferent('dispatch_time', displayOrder.dispatch_time) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                    {formatDate(displayOrder.dispatch_time)}
                   </span>
+                  {getFieldDiffMarker('dispatch_time', displayOrder.dispatch_time)}
                 </div>
                 <div>
-                  <span className="text-xs text-zinc-500 font-medium block">Expected Arrival</span>
-                  <span className="text-sm text-white block mt-1">
-                    {formatDate(order.expected_delivery_time)}
+                  <span className="text-xs text-zinc-300 font-medium block">Expected Arrival</span>
+                  <span className={`text-sm block mt-1 ${isFieldDifferent('expected_delivery_time', displayOrder.expected_delivery_time) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                    {formatDate(displayOrder.expected_delivery_time)}
                   </span>
+                  {getFieldDiffMarker('expected_delivery_time', displayOrder.expected_delivery_time)}
                 </div>
-                {order.actual_delivery_time && (
+                {displayOrder.actual_delivery_time && (
                   <div>
-                    <span className="text-xs text-zinc-500 font-medium block">Actual Delivery Time</span>
-                    <span className="text-sm text-green-400 font-semibold block mt-1">
-                      {formatDate(order.actual_delivery_time)}
+                    <span className="text-xs text-zinc-300 font-medium block">Actual Delivery Time</span>
+                    <span className={`text-sm block mt-1 ${isFieldDifferent('actual_delivery_time', displayOrder.actual_delivery_time) ? 'text-yellow-500 font-bold' : 'text-green-400 font-semibold'}`}>
+                      {formatDate(displayOrder.actual_delivery_time)}
                     </span>
+                    {getFieldDiffMarker('actual_delivery_time', displayOrder.actual_delivery_time)}
                   </div>
                 )}
-                {order.delivery_duration !== null && (
+                {displayOrder.dispatch_time && displayOrder.actual_delivery_time && (
                   <div>
-                    <span className="text-xs text-zinc-500 font-medium block">Delivery Timeframe</span>
-                    <span className="text-sm text-white block mt-1">
-                      {order.delivery_duration} hours
+                    <span className="text-xs text-zinc-300 font-medium block">Delivery Timeframe</span>
+                    <span className="text-sm text-white block mt-1 font-semibold">
+                      {Math.round((new Date(displayOrder.actual_delivery_time.endsWith('Z') || displayOrder.actual_delivery_time.includes('+') ? displayOrder.actual_delivery_time : displayOrder.actual_delivery_time + 'Z') - new Date(displayOrder.dispatch_time.endsWith('Z') || displayOrder.dispatch_time.includes('+') ? displayOrder.dispatch_time : displayOrder.dispatch_time + 'Z')) / (1000 * 60 * 60))} hours
                     </span>
                   </div>
                 )}
               </div>
             )}
 
-            {!isEditing && order.notes && (
-              <div className="mt-6 pt-6 border-t border-zinc-800/80">
-                <span className="text-xs text-zinc-500 font-medium block mb-2">Transit Manifest Notes</span>
-                <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-xl p-3 text-xs text-zinc-300 leading-relaxed font-sans">
-                  {order.notes}
+            {!isEditing && displayOrder.notes && (
+              <div className="mt-6 pt-6 border-t border-zinc-850">
+                <span className="text-xs text-zinc-300 font-medium block mb-2">Transit Manifest Notes</span>
+                <div className={`bg-zinc-950/40 border rounded-xl p-3 text-xs leading-relaxed font-sans ${isFieldDifferent('notes', displayOrder.notes) ? 'text-yellow-500 font-semibold border-yellow-500/20' : 'text-zinc-300 border-zinc-800/60'}`}>
+                  {displayOrder.notes}
                 </div>
+                {getFieldDiffMarker('notes', displayOrder.notes)}
               </div>
             )}
           </div>
@@ -616,7 +902,7 @@ export default function OrderDetailPage() {
             {isEditing ? (
               <div className="space-y-3">
                 {editLineItems.map((item, idx) => (
-                  <div key={idx} className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/30 p-3 rounded-xl border border-zinc-850">
+                  <div key={idx} className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/30 p-3 rounded-xl border border-zinc-800">
                     <div className="flex-1 w-full relative product-search-container">
                       <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Product</label>
                       <input
@@ -723,15 +1009,21 @@ export default function OrderDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-850">
-                    {order.line_items.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-zinc-850/10 transition-colors">
-                        <td className="px-4 py-4 text-sm font-bold text-white">{item.product_name}</td>
-                        <td className="px-4 py-4 text-sm text-right text-zinc-400 capitalize">{item.unit}</td>
-                        <td className="px-4 py-4 text-sm text-center text-zinc-300 font-mono">{item.quantity}</td>
-                        <td className="px-4 py-4 text-sm text-center text-zinc-400" style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.unit_price)}</td>
-                        <td className="px-4 py-4 text-sm text-center text-white font-semibold" style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.total_price || (item.unit_price * item.quantity))}</td>
-                      </tr>
-                    ))}
+                    {displayOrder.line_items.map((item, idx) => {
+                      const isItemDiff = isLineItemDifferent(item)
+                      return (
+                        <tr key={idx} className="hover:bg-zinc-850/10 transition-colors">
+                          <td className={`px-4 py-4 text-sm font-bold ${isItemDiff ? 'text-yellow-500' : 'text-white'}`}>
+                            {item.product_name}
+                            {getLineItemDiffMarker(item)}
+                          </td>
+                          <td className={`px-4 py-4 text-sm text-right capitalize ${isItemDiff ? 'text-yellow-500/90 font-medium' : 'text-zinc-400'}`}>{item.unit}</td>
+                          <td className={`px-4 py-4 text-sm text-center font-mono ${isItemDiff ? 'text-yellow-500 font-bold' : 'text-zinc-300'}`}>{item.quantity}</td>
+                          <td className="px-4 py-4 text-sm text-center text-zinc-400" style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.unit_price)}</td>
+                          <td className={`px-4 py-4 text-sm text-center font-semibold ${isItemDiff ? 'text-yellow-500' : 'text-white'}`} style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.total_price || (item.unit_price * item.quantity))}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -744,7 +1036,7 @@ export default function OrderDetailPage() {
                 {isEditing ? (
                   formatCurrency(editLineItems.reduce((acc, item) => acc + (getProductRate(item.product_id) * (parseFloat(item.quantity) || 0)), 0))
                 ) : (
-                  formatCurrency(order.total_amount)
+                  formatCurrency(displayOrder.total_amount || displayOrder.line_items?.reduce((acc, item) => acc + (item.unit_price * item.quantity), 0) || 0)
                 )}
               </span>
             </div>
@@ -764,12 +1056,12 @@ export default function OrderDetailPage() {
             <div className="space-y-4">
               <div>
                 <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">Company Name</span>
-                <span className="text-sm font-bold text-white block mt-0.5">{order.customer_name}</span>
+                <span className="text-sm font-bold block mt-0.5 text-white">{displayOrder.customer_name || order.customer_name}</span>
               </div>
 
               <div>
                 <span className="text-[10px] text-zinc-500 uppercase tracking-wider block">Fulfillment State</span>
-                <span className="text-sm text-zinc-300 block mt-0.5">{order.customer_state || 'N/A'}</span>
+                <span className="text-sm text-zinc-300 block mt-0.5">{displayOrder.customer_state || order.customer_state || 'N/A'}</span>
               </div>
 
               <div>
@@ -800,58 +1092,108 @@ export default function OrderDetailPage() {
               <Activity size={16} className="text-zinc-500" />
               Manifest Audit Trail
             </h3>
+            <div className="custom-audit-scrollbar overflow-y-auto pl-6 pr-2" style={{ maxHeight: '340px' }}>
+              <style>{`
+                .custom-audit-scrollbar::-webkit-scrollbar {
+                  width: 5px;
+                }
+                .custom-audit-scrollbar::-webkit-scrollbar-track {
+                  background: transparent;
+                }
+                .custom-audit-scrollbar::-webkit-scrollbar-thumb {
+                  background-color: rgba(255, 255, 255, 0.25);
+                  border-radius: 99px;
+                }
+                .custom-audit-scrollbar::-webkit-scrollbar-thumb:hover {
+                  background-color: rgba(255, 255, 255, 0.6);
+                }
+              `}</style>
+              {auditLogs.length === 0 ? (
+                <div className="flex items-center gap-2 text-zinc-500 bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/80 text-xs">
+                  <Info size={14} />
+                  <span>No audit events registered.</span>
+                </div>
+              ) : (
+                <div className="relative pl-4 border-l-2 border-zinc-800 space-y-6 py-2">
+                  {auditLogs.map((log, idx) => {
+                    let detailsObj = null
+                    try {
+                      detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details
+                    } catch (e) {
+                      // fallback
+                    }
 
-            {auditLogs.length === 0 ? (
-              <div className="flex items-center gap-2 text-zinc-500 bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/80 text-xs">
-                <Info size={14} />
-                <span>No audit events registered.</span>
-              </div>
-            ) : (
-              <div className="relative pl-4 border-l-2 border-zinc-800 space-y-6 py-2">
-                {auditLogs.map((log, idx) => {
-                  let detailsObj = null
-                  try {
-                    detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details
-                  } catch (e) {
-                    // fallback
-                  }
+                    const prevSnapshot = detailsObj?.state_snapshot ? getPreviousSnapshot(idx) : null
+                    const diffs = detailsObj?.state_snapshot ? getSnapshotDiff(prevSnapshot, detailsObj.state_snapshot) : []
 
-                  return (
-                    <div key={idx} className="relative">
-                      {/* timeline node dot */}
-                      <span className="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-cyan-500 ring-4 ring-zinc-900" />
+                    return (
+                      <div key={idx} className="relative">
+                        {/* timeline node dot */}
+                        <span className="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-cyan-500 ring-4 ring-zinc-900" />
 
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs font-bold text-white capitalize leading-normal">
-                            {detailsObj?.action || log.action.replace(/_/g, ' ')}
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs font-bold text-white capitalize leading-normal">
+                              {detailsObj?.action || log.action.replace(/_/g, ' ')}
+                            </div>
+                            {detailsObj?.commit_hash && (
+                              <span className="text-[10px] bg-zinc-800 border border-zinc-700/60 px-1.5 py-0.5 rounded font-mono text-zinc-400 shrink-0">
+                                {detailsObj.commit_hash}
+                              </span>
+                            )}
                           </div>
-                          {detailsObj?.commit_hash && (
-                            <span className="text-[10px] bg-zinc-800 border border-zinc-700/60 px-1.5 py-0.5 rounded font-mono text-zinc-400 shrink-0">
-                              {detailsObj.commit_hash}
-                            </span>
+                          <div className="text-[10px] text-zinc-550 font-mono">
+                            {formatDate(log.timestamp)}
+                          </div>
+                          <div className="text-[11px] text-zinc-400 mt-1 leading-normal">
+                            By <span className="text-zinc-300 font-semibold">{log.user_name || "Operator"}</span>
+                          </div>
+
+                          {/* Visual Commit Diff Changes */}
+                          {diffs.length > 0 && (
+                            <div className="mt-2 pl-2 border-l border-zinc-800 space-y-1">
+                              {diffs.map((diff, diffIdx) => (
+                                <div key={diffIdx} className="text-[10px] flex items-start gap-1.5 text-zinc-400 leading-relaxed">
+                                  <span className={`w-1 h-1 rounded-full mt-1.5 shrink-0 ${
+                                    diff.type === 'add' ? 'bg-green-500' :
+                                    diff.type === 'delete' ? 'bg-red-500' :
+                                    diff.type === 'info' ? 'bg-zinc-500' :
+                                    'bg-cyan-500'
+                                  }`} />
+                                  <span>{diff.text}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {detailsObj?.state_snapshot && (
+                            <div className="mt-3 flex items-center gap-2.5">
+                              <button
+                                onClick={() => handlePreviewCommit(log, detailsObj)}
+                                className={`text-[10px] font-bold flex items-center gap-1 shrink-0 transition-colors ${
+                                  previewCommit?.id === log.id
+                                    ? 'text-yellow-400 hover:text-yellow-355 underline'
+                                    : 'text-zinc-400 hover:text-zinc-300 hover:underline'
+                                }`}
+                              >
+                                👁 {previewCommit?.id === log.id ? 'Viewing State' : 'Preview State'}
+                              </button>
+                              <span className="text-[10px] text-zinc-700 font-bold">|</span>
+                              <button
+                                onClick={() => handleRevert(log, detailsObj)}
+                                className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 hover:underline flex items-center gap-1 shrink-0 transition-colors"
+                              >
+                                ↺ Revert
+                              </button>
+                            </div>
                           )}
                         </div>
-                        <div className="text-[10px] text-zinc-550 font-mono">
-                          {formatDate(log.timestamp)}
-                        </div>
-                        <div className="text-[11px] text-zinc-400 mt-1 leading-normal">
-                          By <span className="text-zinc-300 font-semibold">{log.user_name || "Operator"}</span>
-                        </div>
-                        {detailsObj?.state_snapshot && (
-                          <button
-                            onClick={() => handleRevert(log, detailsObj)}
-                            className="mt-2 text-[10px] font-bold text-cyan-400 hover:text-cyan-300 hover:underline flex items-center gap-1 self-start"
-                          >
-                            ↺ Revert to this commit
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
