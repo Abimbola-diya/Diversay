@@ -68,10 +68,12 @@ def get_dashboard_metrics(
     
     on_time = len([o for o in all_orders if o.order_status == OrderStatus.DELIVERED_ON_TIME])
     late = len([o for o in all_orders if o.order_status == OrderStatus.DELIVERED_LATE])
-    total_delivered = on_time + late
+    delayed_manifests = len([o for o in all_orders if o.order_status == OrderStatus.DELAYED])
     
-    on_time_percentage = (on_time / total_delivered * 100) if total_delivered > 0 else 0
-    late_percentage = (late / total_delivered * 100) if total_delivered > 0 else 0
+    total_evaluated = on_time + late + delayed_manifests
+    
+    on_time_percentage = (on_time / total_evaluated * 100) if total_evaluated > 0 else 0
+    late_percentage = ((late + delayed_manifests) / total_evaluated * 100) if total_evaluated > 0 else 0
     
     state_counts = {}
     for order in all_orders:

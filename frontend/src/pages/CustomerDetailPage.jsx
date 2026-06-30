@@ -323,8 +323,8 @@ export default function CustomerDetailPage() {
       else if (status === 'Draft') draft++
     })
 
-    const totalDelivered = deliveredOnTime + deliveredLate
-    const onTimeRate = totalDelivered > 0 ? (deliveredOnTime / totalDelivered) * 100 : 0
+    const totalEvaluated = deliveredOnTime + deliveredLate + delayed
+    const onTimeRate = totalEvaluated > 0 ? (deliveredOnTime / totalEvaluated) * 100 : 0
 
     const statusChartData = [
       { name: 'Delivered (On Time)', count: deliveredOnTime },
