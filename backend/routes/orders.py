@@ -29,6 +29,35 @@ def update_order_status(order: Order):
     if order.actual_delivery_time and order.dispatch_time:
         order.delivery_duration = calculate_delivery_duration(order)
 
+def get_order_snapshot(order: Order):
+    """Generate a dictionary snapshot of the current state of an order."""
+    line_items_snapshot = []
+    for item in order.line_items:
+        prod_name = item.product.name if item.product else "Unknown Product"
+        line_items_snapshot.append({
+            "product_id": item.product_id,
+            "product_name": prod_name,
+            "quantity": item.quantity,
+            "unit": item.unit.value if hasattr(item.unit, 'value') else str(item.unit),
+            "unit_price": item.unit_price
+        })
+        
+    return {
+        "waybill_number": order.waybill_number,
+        "invoice_number": order.invoice_number,
+        "customer_id": order.customer_id,
+        "customer_name": order.customer.name if order.customer else "Unknown Customer",
+        "customer_address": order.customer.address if order.customer else None,
+        "customer_state": order.customer.state if order.customer else None,
+        "dispatch_time": order.dispatch_time.isoformat() if order.dispatch_time else None,
+        "expected_delivery_time": order.expected_delivery_time.isoformat() if order.expected_delivery_time else None,
+        "actual_delivery_time": order.actual_delivery_time.isoformat() if order.actual_delivery_time else None,
+        "driver_name": order.driver_name,
+        "vehicle_number": order.vehicle_number,
+        "notes": order.notes,
+        "line_items": line_items_snapshot
+    }
+
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 def create_order(
     order_create: OrderCreate,
@@ -93,9 +122,20 @@ def create_order(
         )
         db.add(line_item)
     
+    db.flush()
+    
+    import uuid
+    commit_hash = uuid.uuid4().hex[:7]
+    commit_msg = order_create.commit_message or f"Initial creation of order {order_number}"
+    snapshot = get_order_snapshot(new_order)
+    
     create_audit_log(
         db, current_user.id, ActionType.CREATE, "orders", new_order.id,
-        {"action": "Order created", "order_number": order_number}
+        {
+            "action": commit_msg,
+            "commit_hash": commit_hash,
+            "state_snapshot": snapshot
+        }
     )
     
     db.commit()
@@ -326,9 +366,20 @@ def update_order(
     
     update_order_status(order)
     
+    db.flush()
+    
+    import uuid
+    commit_hash = uuid.uuid4().hex[:7]
+    commit_msg = order_update.commit_message or "Updated order details"
+    snapshot = get_order_snapshot(order)
+    
     create_audit_log(
         db, current_user.id, ActionType.EDIT, "orders", order_id,
-        {"action": "Order updated"}
+        {
+            "action": commit_msg,
+            "commit_hash": commit_hash,
+            "state_snapshot": snapshot
+        }
     )
     
     db.commit()

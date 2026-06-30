@@ -150,6 +150,36 @@ def update_customer(
         "updated_at": customer.updated_at
     }
 
+@router.get("/{customer_id}", response_model=CustomerResponse)
+def get_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get details of a single customer."""
+    customer = db.query(Customer).filter(
+        Customer.id == customer_id,
+        Customer.is_deleted == False
+    ).first()
+    
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Customer not found"
+        )
+    
+    return {
+        "id": customer.id,
+        "name": customer.name,
+        "address": customer.address,
+        "city": customer.city,
+        "state": customer.state,
+        "contact_number": customer.contact_number,
+        "email": customer.email,
+        "created_at": customer.created_at,
+        "updated_at": customer.updated_at
+    }
+
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_customer(
     customer_id: int,

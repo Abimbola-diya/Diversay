@@ -1,21 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react'
-import api from '../services/api'
+import api, { getWithCache, isCached } from '../services/api'
 import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar, ArrowRight, MapPin } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Link } from 'react-router-dom'
 
+// Module-level state — survives component unmount/remount during route navigation
+let _cached = null
+
 export default function OrdersTable() {
-  const [orders, setOrders] = useState([])
+  const [orders, setOrders] = useState(() => _cached?.orders ?? [])
   const containerRef = useRef(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !_cached)
   const [error, setError] = useState(null)
-  const [page, setPage] = useState(0)
-  const [totalOrders, setTotalOrders] = useState(0)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterState, setFilterState] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterProductType, setFilterProductType] = useState('')
-  const [dateRange, setDateRange] = useState('30days')
+  const [page, setPage] = useState(() => _cached?.page ?? 0)
+  const [totalOrders, setTotalOrders] = useState(() => _cached?.totalOrders ?? 0)
+  const [searchTerm, setSearchTerm] = useState(() => _cached?.searchTerm ?? '')
+  const [filterState, setFilterState] = useState(() => _cached?.filterState ?? '')
+  const [filterStatus, setFilterStatus] = useState(() => _cached?.filterStatus ?? '')
+  const [filterProductType, setFilterProductType] = useState(() => _cached?.filterProductType ?? '')
+  const [dateRange, setDateRange] = useState(() => _cached?.dateRange ?? '30days')
   const [expandedRows, setExpandedRows] = useState(new Set())
   const [scrollPosition, setScrollPosition] = useState({})
   const fetchRequestRef = useRef(0)
@@ -43,7 +46,10 @@ export default function OrdersTable() {
   const fetchOrders = async () => {
     const requestId = ++fetchRequestRef.current
     try {
-      setLoading(true)
+      // Only show loading spinner if we have no persisted data to display
+      if (!_cached) {
+        setLoading(true)
+      }
 
       let params = {
         skip: page * pageSize,
@@ -65,15 +71,22 @@ export default function OrdersTable() {
       }
 
       const response = await api.get('/orders', { params })
+
       if (requestId === fetchRequestRef.current) {
-        setOrders(response.data.items || [])
-        setTotalOrders(response.data.total || 0)
+        const items = response.data.items || []
+        const total = response.data.total || 0
+        setOrders(items)
+        setTotalOrders(total)
         setError(null)
+        // Persist state for instant re-mount on navigation
+        _cached = { orders: items, totalOrders: total, page, searchTerm, filterState, filterStatus, filterProductType, dateRange }
       }
     } catch (err) {
       if (requestId === fetchRequestRef.current) {
         console.error('Failed to fetch orders:', err)
-        setError('Failed to load orders')
+        if (!_cached) {
+          setError('Failed to load orders')
+        }
       }
     } finally {
       if (requestId === fetchRequestRef.current) {

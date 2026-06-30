@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import api from '../services/api'
+import { useNavigate } from 'react-router-dom'
+import api, { getWithCache, isCached } from '../services/api'
 import { STATE_CENTROIDS, NIGERIA_MAP_PATHS } from '../components/NigeriaMap'
 import { 
   Search, 
@@ -29,7 +30,15 @@ const normalizeStateName = (stateName) => {
   return name.toLowerCase().replace(/\s+/g, '-')
 }
 
-const DirectoryList = React.memo(({ filteredCustomers, selectedCustomer, onCustomerClick }) => {
+const DirectoryList = React.memo(({ filteredCustomers, selectedCustomer, onCustomerClick, onViewProfile }) => {
+  const selectedRef = useRef(null)
+
+  useEffect(() => {
+    if (selectedCustomer && selectedRef.current) {
+      selectedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [selectedCustomer])
+
   return (
     <>
       {filteredCustomers.map((c) => {
@@ -37,6 +46,7 @@ const DirectoryList = React.memo(({ filteredCustomers, selectedCustomer, onCusto
         return (
           <div
             key={c.id}
+            ref={isSelected ? selectedRef : null}
             onClick={() => onCustomerClick(c)}
             className={`p-3 rounded-xl border text-left cursor-pointer transition-colors duration-150 ease-out ${
               isSelected
@@ -71,6 +81,19 @@ const DirectoryList = React.memo(({ filteredCustomers, selectedCustomer, onCusto
                 </div>
               )}
             </div>
+
+            {isSelected && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onViewProfile(c.id)
+                }}
+                className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-zinc-200 text-black text-xs font-semibold rounded-lg transition-colors shadow-lg"
+              >
+                <span>View Analytics & Orders</span>
+                <ChevronRight size={13} />
+              </button>
+            )}
           </div>
         )
       })}
@@ -78,9 +101,13 @@ const DirectoryList = React.memo(({ filteredCustomers, selectedCustomer, onCusto
   )
 })
 
+// Module-level state — survives component unmount/remount during route navigation
+let _cachedCustomers = null
+
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+  const [customers, setCustomers] = useState(() => _cachedCustomers ?? [])
+  const [loading, setLoading] = useState(() => !_cachedCustomers)
   const [error, setError] = useState(null)
   
   // Search query & interaction states
@@ -97,7 +124,23 @@ export default function CustomersPage() {
   }, [searchInput])
   const [selectedState, setSelectedState] = useState(null)
   const [selectedCustomer, setSelectedCustomer] = useState(null)
-  
+  const [visibleCount, setVisibleCount] = useState(100)
+
+  // Reset visibleCount when search query changes
+  useEffect(() => {
+    setVisibleCount(100)
+  }, [searchQuery])
+
+
+  // Ref for popup list scroll container and selected item
+  const popupSelectedRef = useRef(null)
+
+  useEffect(() => {
+    if (selectedCustomer && popupSelectedRef.current) {
+      popupSelectedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [selectedCustomer, selectedState])
+
   // Ref to handle mouse leave correctly on the popup
   const popupRef = useRef(null)
 
@@ -121,18 +164,23 @@ export default function CustomersPage() {
     }
   }, [])
 
-  // Fetch customers on mount
+  // Fetch customers on mount with instant re-mount from module cache
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        setLoading(true)
-        // Retrieve up to 1000 items in a single call
+        if (!_cachedCustomers) {
+          setLoading(true)
+        }
         const response = await api.get('/customers?limit=1000')
-        setCustomers(response.data.items || [])
+        const items = response.data.items || []
+        setCustomers(items)
         setError(null)
+        _cachedCustomers = items
       } catch (err) {
         console.error('Failed to fetch customers:', err)
-        setError('Failed to load customers directory. Please try again.')
+        if (!_cachedCustomers) {
+          setError('Failed to load customers directory. Please try again.')
+        }
       } finally {
         setLoading(false)
       }
@@ -166,6 +214,24 @@ export default function CustomersPage() {
       (c.email && c.email.toLowerCase().includes(query))
     )
   }, [customers, searchQuery])
+
+  const handleScroll = useCallback((e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    // If we are within 40px of the bottom, load 20 more
+    if (scrollHeight - scrollTop - clientHeight < 40) {
+      setVisibleCount(prev => Math.min(prev + 20, filteredCustomers.length))
+    }
+  }, [filteredCustomers.length])
+
+  // If a customer is selected and is beyond current visible count, expand visible count to render them
+  useEffect(() => {
+    if (selectedCustomer) {
+      const idx = filteredCustomers.findIndex(c => c.id === selectedCustomer.id)
+      if (idx !== -1 && idx >= visibleCount) {
+        setVisibleCount(prev => Math.max(prev, idx + 20))
+      }
+    }
+  }, [selectedCustomer, filteredCustomers, visibleCount])
 
   // Group customers by normalized state key
   const customersByState = useMemo(() => {
@@ -449,16 +515,7 @@ export default function CustomersPage() {
 
                       const isHovered = hoveredState === stateId
                       const isSelected = selectedState === stateId
-                      const isHighlighed = isHovered || isSelected
-
-                      // Show pin only when actively searching, when a customer is selected, or when hovering/selecting a state
-                      const isPinVisible = 
-                        (searchQuery.trim() !== '') ||
-                        (selectedCustomer !== null && normalizeStateName(selectedCustomer.state) === stateId) ||
-                        isHovered ||
-                        isSelected;
-
-                      if (!isPinVisible) return null;
+                      const isHighlighed = isHovered || isSelected || (selectedCustomer !== null && normalizeStateName(selectedCustomer.state) === stateId)
 
                       return (
                         <g 
@@ -547,6 +604,7 @@ export default function CustomersPage() {
                     {(selectedState ? activeCalloutCustomers : activeCalloutCustomers.slice(0, 4)).map((c) => (
                       <div 
                         key={c.id} 
+                        ref={selectedCustomer?.id === c.id ? popupSelectedRef : null}
                         onClick={() => setSelectedCustomer(selectedCustomer?.id === c.id ? null : c)}
                         className={`p-2 rounded-lg text-left transition-colors cursor-pointer ${
                           selectedCustomer?.id === c.id 
@@ -564,6 +622,18 @@ export default function CustomersPage() {
                             <Phone size={10} className="text-zinc-500" />
                             <span>{c.contact_number}</span>
                           </div>
+                        )}
+                        {selectedCustomer?.id === c.id && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(`/customers/${c.id}`)
+                            }}
+                            className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-1 bg-white hover:bg-zinc-200 text-black text-[10px] font-bold rounded transition-colors shadow"
+                          >
+                            <span>View Analytics</span>
+                            <ChevronRight size={10} />
+                          </button>
                         )}
                       </div>
                     ))}
@@ -718,14 +788,15 @@ export default function CustomersPage() {
               <div className="flex justify-between items-center text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3 flex-shrink-0 px-1">
                 <span>Customer Directory</span>
                 <span>
-                  {filteredCustomers.length > 100 
-                    ? `Showing 100 of ${filteredCustomers.length}` 
-                    : `Showing ${filteredCustomers.length}`}
+                  {`Showing ${Math.min(visibleCount, filteredCustomers.length)} of ${filteredCustomers.length}`}
                 </span>
               </div>
 
               {/* Scrollable Customer List */}
-              <div className="max-h-[260px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+              <div 
+                className="max-h-[260px] overflow-y-auto custom-scrollbar space-y-2 pr-1"
+                onScroll={handleScroll}
+              >
                 {filteredCustomers.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-zinc-900/10 border border-dashed border-zinc-900 rounded-xl">
                     <Users className="text-zinc-600 w-8 h-8 mb-2" />
@@ -734,9 +805,10 @@ export default function CustomersPage() {
                   </div>
                 ) : (
                   <DirectoryList 
-                    filteredCustomers={filteredCustomers.slice(0, 100)}
+                    filteredCustomers={filteredCustomers.slice(0, visibleCount)}
                     selectedCustomer={selectedCustomer}
                     onCustomerClick={handleCustomerClick}
+                    onViewProfile={(id) => navigate(`/customers/${id}`)}
                   />
                 )}
               </div>

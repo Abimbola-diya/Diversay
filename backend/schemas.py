@@ -138,6 +138,7 @@ class OrderCreate(BaseModel):
     driver_name: Optional[str] = None
     vehicle_number: Optional[str] = None
     line_items: List[OrderLineItemCreate]
+    commit_message: Optional[str] = None
 
 class OrderUpdate(BaseModel):
     customer_id: Optional[int] = None
@@ -150,6 +151,7 @@ class OrderUpdate(BaseModel):
     driver_name: Optional[str] = None
     vehicle_number: Optional[str] = None
     line_items: Optional[List[OrderLineItemCreate]] = None
+    commit_message: Optional[str] = None
 
 class OrderStatusUpdate(BaseModel):
     order_status: OrderStatus

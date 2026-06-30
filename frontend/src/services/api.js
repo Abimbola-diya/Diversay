@@ -40,13 +40,18 @@ const memoryCache = new Map()
 const pendingPromises = new Map()
 
 export const getWithCache = async (url, config = {}) => {
+  // Generate a unique cache key that includes query parameters
+  const cacheKey = config.params 
+    ? `${url}?${new URLSearchParams(config.params).toString()}` 
+    : url
+
   // If data is in cache, return immediately and trigger background refresh
-  if (memoryCache.has(url)) {
-    const cachedData = memoryCache.get(url)
+  if (memoryCache.has(cacheKey)) {
+    const cachedData = memoryCache.get(cacheKey)
     
     // Background fetch (silent revalidation)
     api.get(url, config).then((response) => {
-      memoryCache.set(url, response.data)
+      memoryCache.set(cacheKey, response.data)
       if (config.onCacheUpdate) {
         config.onCacheUpdate(response.data)
       }
@@ -58,9 +63,9 @@ export const getWithCache = async (url, config = {}) => {
   }
 
   // If there's already an active request for this URL, await it to prevent duplicate requests
-  if (pendingPromises.has(url)) {
+  if (pendingPromises.has(cacheKey)) {
     try {
-      const data = await pendingPromises.get(url)
+      const data = await pendingPromises.get(cacheKey)
       return { data, fromCache: true }
     } catch (err) {
       // If the pending promise failed, re-throw
@@ -71,16 +76,16 @@ export const getWithCache = async (url, config = {}) => {
   // Create new request promise
   const promise = api.get(url, config)
     .then((res) => {
-      memoryCache.set(url, res.data)
-      pendingPromises.delete(url)
+      memoryCache.set(cacheKey, res.data)
+      pendingPromises.delete(cacheKey)
       return res.data
     })
     .catch((err) => {
-      pendingPromises.delete(url)
+      pendingPromises.delete(cacheKey)
       throw err
     })
 
-  pendingPromises.set(url, promise)
+  pendingPromises.set(cacheKey, promise)
   
   try {
     const data = await promise
@@ -88,6 +93,13 @@ export const getWithCache = async (url, config = {}) => {
   } catch (err) {
     throw err
   }
+}
+
+export const isCached = (url, config = {}) => {
+  const cacheKey = config.params 
+    ? `${url}?${new URLSearchParams(config.params).toString()}` 
+    : url
+  return memoryCache.has(cacheKey)
 }
 
 export const clearCache = () => {
