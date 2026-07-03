@@ -129,7 +129,7 @@ export default function DashboardTabs() {
     switch (activeTab) {
       case 'notifications':
         return (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
             {notifications.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No notifications</div>
             ) : (
@@ -165,7 +165,7 @@ export default function DashboardTabs() {
 
       case 'activities':
         return (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
             {activities.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No recent activities</div>
             ) : (
@@ -193,7 +193,7 @@ export default function DashboardTabs() {
 
       case 'scheduled':
         return (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
             {scheduledDeliveries.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No scheduled deliveries</div>
             ) : (
@@ -231,7 +231,7 @@ export default function DashboardTabs() {
 
       case 'pending':
         return (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
             {pendingIssues.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No pending issues</div>
             ) : (

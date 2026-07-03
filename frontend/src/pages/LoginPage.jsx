@@ -16,20 +16,20 @@ const COLORS = [
 ]
 
 export default function LoginPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [isReady, setIsReady] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedRole = searchParams.get('role')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+
+  const skipSplash = location.state?.skipSplash || false
+  const [email, setEmail] = useState(location.state?.autofillEmail || '')
+  const [password, setPassword] = useState(location.state?.autofillPassword || '')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const { login } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
   
-  const skipSplash = location.state?.skipSplash || false
-
   // Splash-screen state
   const [showSplash,    setShowSplash]    = useState(!skipSplash)
   const [slideLoginUp,  setSlideLoginUp]  = useState(skipSplash)

@@ -165,17 +165,19 @@ export default function SignupPage() {
     )
   }
 
-  // Success message typing animation
+  // Success message typing animation with realistic timing variance
   useEffect(() => {
     if (!signupSuccess) return
     
+    // Vary typing speed per letter (simulating human layout lag/typing speed)
+    const delay = Math.max(30, Math.random() * 110)
     const timer = setTimeout(() => {
       if (successText.length < SUCCESS_TEXT.length) {
         setSuccessText(SUCCESS_TEXT.slice(0, successText.length + 1))
       } else if (!isSuccessTextComplete) {
         setIsSuccessTextComplete(true)
       }
-    }, 80)
+    }, delay)
     return () => clearTimeout(timer)
   }, [successText, signupSuccess, isSuccessTextComplete])
 
@@ -184,22 +186,23 @@ export default function SignupPage() {
     if (isSuccessTextComplete && !showCheckAnimation) {
       const timer = setTimeout(() => {
         setShowCheckAnimation(true)
-      }, 600)
+      }, 500)
       return () => clearTimeout(timer)
     }
   }, [isSuccessTextComplete, showCheckAnimation])
 
-  // Pending text typing animation
+  // Pending text typing animation with realistic speed variance
   useEffect(() => {
     if (!showCheckAnimation) return
     
+    const delay = Math.max(30, Math.random() * 90)
     const timer = setTimeout(() => {
       if (pendingText.length < PENDING_TEXT.length) {
         setPendingText(PENDING_TEXT.slice(0, pendingText.length + 1))
       } else {
         setIsPendingComplete(true)
       }
-    }, 80)
+    }, delay)
     return () => clearTimeout(timer)
   }, [pendingText, showCheckAnimation])
 
@@ -365,6 +368,9 @@ export default function SignupPage() {
           {/* Success message with typing animation */}
           <h1 className="text-3xl md:text-4xl font-light text-white leading-tight mb-2" style={{ fontFamily: '"Merriweather", serif', fontWeight: 300, letterSpacing: '-0.02em' }}>
             {successText}
+            {!isSuccessTextComplete && (
+              <span className="inline-block ml-0.5 w-[2px] h-[1.15em] bg-green-400 animate-pulse align-middle" />
+            )}
           </h1>
 
           {/* Animated Check Circle */}
@@ -373,38 +379,39 @@ export default function SignupPage() {
               <div className="relative w-16 h-16">
                 <style>{`
                   @keyframes checkCircleGrow {
-                    from {
-                      r: 0;
+                    0% {
+                      stroke-dasharray: 189;
+                      stroke-dashoffset: 189;
                     }
-                    to {
-                      r: 32;
+                    100% {
+                      stroke-dasharray: 189;
+                      stroke-dashoffset: 0;
                     }
                   }
                   @keyframes checkMark {
                     0% {
-                      stroke-dashoffset: 60;
-                      opacity: 0;
-                    }
-                    50% {
-                      opacity: 1;
+                      stroke-dasharray: 35;
+                      stroke-dashoffset: 35;
                     }
                     100% {
+                      stroke-dasharray: 35;
                       stroke-dashoffset: 0;
-                      opacity: 1;
                     }
                   }
                   .check-circle {
-                    animation: checkCircleGrow 0.6s ease-out forwards;
+                    animation: checkCircleGrow 0.8s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+                    stroke-dasharray: 189;
+                    stroke-dashoffset: 189;
                   }
                   .check-mark {
-                    animation: checkMark 0.8s ease-out 0.3s forwards;
-                    stroke-dasharray: 60;
-                    stroke-dashoffset: 60;
+                    animation: checkMark 0.5s cubic-bezier(0.65, 0, 0.45, 1) 0.7s forwards;
+                    stroke-dasharray: 35;
+                    stroke-dashoffset: 35;
                   }
                 `}</style>
                 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="32" cy="32" r="0" stroke="#10b981" strokeWidth="3" className="check-circle" />
-                  <path d="M20 32L28 40L44 24" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="check-mark" />
+                  <circle cx="32" cy="32" r="30" stroke="#10b981" strokeWidth="3" className="check-circle" strokeLinecap="round" />
+                  <path d="M20 32L28 40L44 24" stroke="#10b981" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" className="check-mark" />
                 </svg>
               </div>
             </div>
@@ -414,6 +421,9 @@ export default function SignupPage() {
           {showCheckAnimation && (
             <p className="text-lg text-gray-300 mt-8" style={{ fontFamily: '"Merriweather", serif', fontWeight: 300 }}>
               {pendingText}
+              {!isPendingComplete && (
+                <span className="inline-block ml-0.5 w-[2px] h-[1.15em] bg-green-400 animate-pulse align-middle" />
+              )}
             </p>
           )}
 
@@ -421,7 +431,13 @@ export default function SignupPage() {
           {isPendingComplete && (
             <div className="mt-8 space-y-4 animate-fadeIn">
               <button
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/login?role=viewer', {
+                  state: {
+                    skipSplash: true,
+                    autofillEmail: email,
+                    autofillPassword: password
+                  }
+                })}
                 className="w-full px-6 py-3 bg-gray-200 text-gray-900 rounded-lg font-medium hover:bg-white transition-all"
               >
                 Go to Login
