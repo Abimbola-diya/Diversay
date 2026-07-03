@@ -13,9 +13,9 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 @router.get("/dashboard", response_model=DashboardMetrics)
 def get_dashboard_metrics(
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(get_current_user)
 ):
-    """Get dashboard metrics (admin only)."""
+    """Get dashboard metrics."""
     
     now = datetime.utcnow()
     today_start = datetime(now.year, now.month, now.day)

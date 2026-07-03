@@ -170,14 +170,8 @@ export default function LoginPage() {
           return
         }
 
-        if (selectedRole === 'viewer' && userRole === 'admin') {
-          setError('Please use admin login for admin accounts')
-          setIsLoading(false)
-          return
-        }
-
-        // Navigate to dashboard for admin, orders for viewer
-        const destination = userRole === 'admin' ? '/dashboard' : '/orders'
+        // Navigate to dashboard for admin login path, orders for user login path
+        const destination = selectedRole === 'admin' ? '/dashboard' : '/orders'
         navigate(destination, { state: { fromLogin: true } })
       } else {
         // Check for pending approval error

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutDashboard, Package, Users, BarChart3, LogOut, CheckSquare, ShieldAlert, Columns, Plus } from 'lucide-react'
 import CreateOrderModal from './CreateOrderModal'
+import AccessGatewayModal from './AccessGatewayModal'
 
 export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }) {
   const [localIsOpen, setLocalIsOpen] = useState(false)
@@ -10,8 +11,9 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
   const setIsOpen = propSetIsOpen !== undefined ? propSetIsOpen : setLocalIsOpen
 
   const [isCreateOrderOpen, setIsCreateOrderOpen] = useState(false)
+  const [showAccessGateway, setShowAccessGateway] = useState(false)
 
-  const { logout, user, requestAdmin } = useAuth()
+  const { logout, user, requestAdmin, hasWriteAccess } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -110,7 +112,13 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
           {/* Create Order Button */}
           <div className="relative group flex justify-center w-full">
             <button
-              onClick={() => setIsCreateOrderOpen(true)}
+              onClick={() => {
+                if (hasWriteAccess) {
+                  setIsCreateOrderOpen(true)
+                } else {
+                  setShowAccessGateway(true)
+                }
+              }}
               className={`w-full flex items-center rounded-xl transition-all duration-200 font-medium text-sm relative z-10
                 ${isOpen ? 'px-3 py-2 gap-2.5 justify-start' : 'p-2 justify-center'}
                 text-zinc-400 hover:text-zinc-200`}
@@ -249,7 +257,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
         {/* Bottom Panel */}
         <div className="flex flex-col gap-1">
           {/* Request Admin Access for Viewers (Only when open) */}
-          {isOpen && user?.role === 'viewer' && (
+          {isOpen && user?.role === 'viewer' && !hasWriteAccess && (
             <div className="mx-2 my-1 p-2 bg-zinc-800/30 rounded-xl border border-zinc-800/80 animate-fadeIn">
               <p className="text-[11px] text-zinc-400 mb-1 leading-relaxed">
                 You are in <strong className="text-zinc-200">Read-Only</strong>. Request admin access.
@@ -261,14 +269,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
                 </div>
               ) : (
                 <button
-                  onClick={async () => {
-                    const res = await requestAdmin();
-                    if (res.success) {
-                      alert("Admin request submitted successfully!");
-                    } else {
-                      alert(res.error || "Failed to submit request.");
-                    }
-                  }}
+                  onClick={() => navigate('/request-access')}
                   className="w-full py-1.5 px-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium text-[10px] rounded-lg transition-all shadow-md shadow-cyan-500/10 hover:shadow-cyan-500/20 active:scale-[0.98]"
                 >
                   Request Admin
@@ -278,23 +279,10 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
           )}
 
           {/* Request Admin Icon for Viewers (Only when collapsed) */}
-          {!isOpen && user?.role === 'viewer' && (
+          {!isOpen && user?.role === 'viewer' && !hasWriteAccess && (
             <div className="relative group px-2 mb-1">
               <button
-                onClick={async () => {
-                  if (user.requesting_admin) {
-                    alert("Admin access request is currently pending approval.");
-                    return;
-                  }
-                  const confirmReq = window.confirm("Would you like to request Admin write access?");
-                  if (!confirmReq) return;
-                  const res = await requestAdmin();
-                  if (res.success) {
-                    alert("Admin request submitted successfully!");
-                  } else {
-                    alert(res.error || "Failed to submit request.");
-                  }
-                }}
+                onClick={() => navigate('/request-access')}
                 className={`w-full flex items-center justify-center p-2 rounded-xl transition-all duration-200 font-medium relative z-10
                   ${user.requesting_admin
                     ? 'text-amber-400'
@@ -410,6 +398,12 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
       <CreateOrderModal
         isOpen={isCreateOrderOpen}
         onClose={() => setIsCreateOrderOpen(false)}
+      />
+
+      {/* Access Gateway Modal for viewers */}
+      <AccessGatewayModal
+        isOpen={showAccessGateway}
+        onClose={() => setShowAccessGateway(false)}
       />
     </>
   )

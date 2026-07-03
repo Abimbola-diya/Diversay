@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from fastapi.security.http import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from models import User
+from models import User, UserRole
 from database import get_db
 
 settings = get_settings()
@@ -76,3 +76,11 @@ def check_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Admin access required"
         )
     return current_user
+
+def check_write_access(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role == UserRole.ADMIN or current_user.has_write_access:
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Write access required"
+    )

@@ -21,6 +21,8 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
     requesting_admin: bool = False
+    role_changed_at: Optional[datetime] = None
+    has_write_access: bool = False
     
     class Config:
         from_attributes = True
@@ -43,6 +45,10 @@ class PasswordReset(BaseModel):
 
 class UpdateUserNameRequest(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=255)
+
+class UserRoleUpdate(BaseModel):
+    role: UserRole
+    has_write_access: Optional[bool] = None
 
 # ============ Customer Schemas ============
 class CustomerCreate(BaseModel):

@@ -119,6 +119,18 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     }
   }, [])
 
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isOpen])
+
   useEffect(() => {
     if (isOpen) {
       fetchFormData()
@@ -138,17 +150,28 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       setProducts(fetchedProducts)
       setCustomers(fetchedCustomers)
 
-      // Initialize searchQuery for line items if pre-selected
-      setBatchOrders(prevOrders => prevOrders.map(order => ({
-        ...order,
-        lineItems: order.lineItems.map(item => {
+      // Initialize searchQuery for line items if pre-selected, and also resolve customer search typed during load
+      setBatchOrders(prevOrders => prevOrders.map(order => {
+        const updatedLineItems = order.lineItems.map(item => {
           if (item.product_id && !item.searchQuery) {
             const prod = fetchedProducts.find(p => p.id === parseInt(item.product_id))
             return { ...item, searchQuery: prod ? prod.name : '' }
           }
           return item
         })
-      })))
+
+        // If they typed something while loading, match it now
+        const matched = order.customerSearchQuery
+          ? searchCustomersLocally(order.customerSearchQuery, fetchedCustomers)
+          : []
+
+        return {
+          ...order,
+          lineItems: updatedLineItems,
+          matchingCustomers: matched.slice(0, 4),
+          showCustomerDropdown: order.customerSearchQuery ? true : order.showCustomerDropdown
+        }
+      }))
     } catch (err) {
       console.error('Failed to load form data:', err)
       setError('Failed to load form data. Please try again.')
@@ -335,7 +358,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onWheel={(e) => e.stopPropagation()}>
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
@@ -363,7 +386,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         </div>
 
         {/* Content Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-modal-scroll bg-zinc-900/20">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-modal-scroll bg-zinc-900/20" style={{ overscrollBehavior: 'contain' }}>
           {error && (
             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex gap-3 text-red-400 text-sm">
               <AlertCircle size={20} className="flex-shrink-0" />
@@ -422,7 +445,6 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                           }}
                           onChange={(e) => handleCustomerSearch(order.id, e.target.value)}
                           className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors text-sm"
-                          disabled={loading}
                         />
                         
                         {order.showCustomerDropdown && order.matchingCustomers.length > 0 && (
@@ -610,7 +632,6 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                               }}
                               onChange={(e) => handleLineItemChange(order.id, itemIdx, 'searchQuery', e.target.value)}
                               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white transition-colors text-sm"
-                              disabled={loading}
                             />
                             
                             {activeProductSearch?.orderId === order.id && activeProductSearch?.itemIdx === itemIdx && (

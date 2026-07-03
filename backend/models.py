@@ -42,6 +42,8 @@ class User(Base):
     role = Column(Enum(UserRole), default=UserRole.VIEWER)
     is_active = Column(Boolean, default=True)
     requesting_admin = Column(Boolean, default=False)
+    role_changed_at = Column(DateTime, nullable=True)
+    has_write_access = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

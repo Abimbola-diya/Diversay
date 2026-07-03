@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models import User, UserRole
-from schemas import UserCreate, UserLogin, UserResponse, TokenResponse, SignupResponse, PasswordResetRequest, PasswordReset, UpdateUserNameRequest
+from schemas import UserCreate, UserLogin, UserResponse, TokenResponse, SignupResponse, PasswordResetRequest, PasswordReset, UpdateUserNameRequest, UserRoleUpdate
 from auth import hash_password, verify_password, create_access_token, get_current_user
-from datetime import timedelta
+from datetime import timedelta, datetime
+from typing import List
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -37,7 +38,9 @@ def login(user_login: UserLogin, db: Session = Depends(get_db)):
             "role": user.role,
             "is_active": user.is_active,
             "created_at": user.created_at,
-            "requesting_admin": user.requesting_admin
+            "requesting_admin": user.requesting_admin,
+            "role_changed_at": user.role_changed_at,
+            "has_write_access": user.has_write_access
         }
     }
 
@@ -73,7 +76,9 @@ def signup(user_create: UserCreate, db: Session = Depends(get_db)):
             "role": new_user.role,
             "is_active": new_user.is_active,
             "created_at": new_user.created_at,
-            "requesting_admin": new_user.requesting_admin
+            "requesting_admin": new_user.requesting_admin,
+            "role_changed_at": new_user.role_changed_at,
+            "has_write_access": new_user.has_write_access
         }
     }
 
@@ -87,8 +92,16 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
         "role": current_user.role,
         "is_active": current_user.is_active,
         "created_at": current_user.created_at,
-        "requesting_admin": current_user.requesting_admin
+        "requesting_admin": current_user.requesting_admin,
+        "role_changed_at": current_user.role_changed_at,
+        "has_write_access": current_user.has_write_access
     }
+
+@router.get("/admins")
+def get_admins(db: Session = Depends(get_db)):
+    """Get active administrators info."""
+    admins = db.query(User).filter(User.role == UserRole.ADMIN, User.is_active == True).all()
+    return [{"id": admin.id, "full_name": admin.full_name, "email": admin.email} for admin in admins]
 
 @router.patch("/me", response_model=UserResponse)
 def update_user_info(current_user: User = Depends(get_current_user), update_data: UpdateUserNameRequest = None, db: Session = Depends(get_db)):
@@ -106,7 +119,9 @@ def update_user_info(current_user: User = Depends(get_current_user), update_data
         "role": current_user.role,
         "is_active": current_user.is_active,
         "created_at": current_user.created_at,
-        "requesting_admin": current_user.requesting_admin
+        "requesting_admin": current_user.requesting_admin,
+        "role_changed_at": current_user.role_changed_at,
+        "has_write_access": current_user.has_write_access
     }
 
 @router.post("/request-admin")
@@ -187,8 +202,9 @@ def approve_user(user_id: int, current_user: User = Depends(get_current_user), d
             detail="User not found"
         )
     
-    user.role = UserRole.ADMIN
+    user.has_write_access = True
     user.requesting_admin = False
+    user.role_changed_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
     
@@ -199,7 +215,9 @@ def approve_user(user_id: int, current_user: User = Depends(get_current_user), d
         "role": user.role,
         "is_active": user.is_active,
         "created_at": user.created_at,
-        "requesting_admin": user.requesting_admin
+        "requesting_admin": user.requesting_admin,
+        "role_changed_at": user.role_changed_at,
+        "has_write_access": user.has_write_access
     }
 
 @router.patch("/admin/reject-user/{user_id}")
@@ -223,3 +241,62 @@ def reject_user(user_id: int, reason: str = None, current_user: User = Depends(g
     db.commit()
     
     return {"message": f"Admin request for {user.email} has been rejected."}
+
+@router.get("/admin/users", response_model=List[UserResponse])
+def get_all_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get list of all users in the system (admin only)."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can view the user list"
+        )
+    return db.query(User).order_by(User.full_name).all()
+
+@router.patch("/admin/users/{user_id}/role", response_model=UserResponse)
+def update_user_role(user_id: int, payload: UserRoleUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update a user's role directly (admin only)."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can modify user roles"
+        )
+    
+    # Prevent self-demotion to avoid locking out the last admin
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot change your own role to prevent lockout"
+        )
+        
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+        
+    if payload.role is not None:
+        user.role = payload.role
+        if payload.role == UserRole.ADMIN:
+            user.has_write_access = True
+            
+    if payload.has_write_access is not None:
+        if not user.has_write_access and payload.has_write_access:
+            user.role_changed_at = datetime.utcnow()
+        user.has_write_access = payload.has_write_access
+        
+    db.commit()
+    db.refresh(user)
+    
+    # Return formatted dict conforming to UserResponse schema
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+        "requesting_admin": user.requesting_admin,
+        "role_changed_at": user.role_changed_at,
+        "has_write_access": user.has_write_access
+    }

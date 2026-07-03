@@ -13,6 +13,7 @@ import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import ProductsPage from './pages/ProductsPage'
 import SplashPage from './pages/SplashPage'
+import RequestAccessPage from './pages/RequestAccessPage'
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:id" element={<CustomerDetailPage />} />
               <Route path="/products" element={<ProductsPage />} />
+              <Route path="/request-access" element={<RequestAccessPage />} />
             </Route>
           </Route>
           

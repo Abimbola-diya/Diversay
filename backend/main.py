@@ -98,6 +98,8 @@ try:
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS requesting_admin BOOLEAN DEFAULT FALSE;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role_changed_at TIMESTAMP;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_write_access BOOLEAN DEFAULT FALSE;"))
         conn.execute(text("UPDATE users SET is_active = TRUE;"))
         conn.commit()
     seed_admin_user()

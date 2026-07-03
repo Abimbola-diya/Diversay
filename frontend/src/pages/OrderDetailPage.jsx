@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import api, { getWithCache, isCached } from '../services/api'
+import { useAuth } from '../hooks/useAuth'
+import AccessGatewayModal from '../components/AccessGatewayModal'
 import {
   ArrowLeft,
   MapPin,
@@ -57,6 +59,8 @@ export default function OrderDetailPage() {
   const [auditLogs, setAuditLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [showAccessGateway, setShowAccessGateway] = useState(false)
+  const { hasWriteAccess } = useAuth()
 
   // Preview state
   const [previewCommit, setPreviewCommit] = useState(null)
@@ -592,6 +596,7 @@ export default function OrderDetailPage() {
   const StatusIcon = statusConfig.icon
 
   return (
+    <>
     <div className={`animate-in fade-in duration-300 max-w-7xl mx-auto ${isEditing ? 'pb-32' : 'pb-12'}`}>
       {/* Navigation & Actions Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
@@ -613,7 +618,13 @@ export default function OrderDetailPage() {
         <div className="flex flex-col md:items-end gap-2">
           {!isEditing && !previewCommit && (
             <button
-              onClick={handleStartEdit}
+              onClick={() => {
+                if (hasWriteAccess) {
+                  handleStartEdit()
+                } else {
+                  setShowAccessGateway(true)
+                }
+              }}
               className="px-4 py-2 border border-zinc-750 hover:border-white bg-transparent hover:bg-white text-zinc-300 hover:text-zinc-900 font-semibold rounded-xl transition-all duration-200 text-sm flex items-center gap-2"
             >
               <Edit3 size={14} />
@@ -654,11 +665,15 @@ export default function OrderDetailPage() {
             </button>
             <button
               onClick={() => {
-                const logItem = auditLogs.find(l => l.id === previewCommit.id)
-                handleRevert(logItem || previewCommit, {
-                  commit_hash: previewCommit.commit_hash,
-                  state_snapshot: previewCommit.state_snapshot
-                })
+                if (hasWriteAccess) {
+                  const logItem = auditLogs.find(l => l.id === previewCommit.id)
+                  handleRevert(logItem || previewCommit, {
+                    commit_hash: previewCommit.commit_hash,
+                    state_snapshot: previewCommit.state_snapshot
+                  })
+                } else {
+                  setShowAccessGateway(true)
+                }
               }}
               className="px-4 py-2 bg-transparent border border-white hover:bg-white text-white hover:text-zinc-950 font-semibold rounded-xl transition-all duration-200 text-xs"
             >
@@ -1229,5 +1244,12 @@ export default function OrderDetailPage() {
         </div>
       )}
     </div>
+
+      {/* Access Gateway Modal for viewers */}
+      <AccessGatewayModal
+        isOpen={showAccessGateway}
+        onClose={() => setShowAccessGateway(false)}
+      />
+    </>
   )
 }

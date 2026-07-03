@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, Product
 from schemas import ProductCreate, ProductUpdate, ProductResponse
-from auth import get_current_user, check_admin
+from auth import get_current_user, check_admin, check_write_access
 from typing import List
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -41,7 +41,7 @@ def list_products(
 def create_product(
     product: ProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Create a new product (admin only)."""
     existing = db.query(Product).filter(
@@ -78,7 +78,7 @@ def update_product(
     product_id: int,
     product_update: ProductUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Update product (admin only)."""
     product = db.query(Product).filter(
@@ -111,7 +111,7 @@ def update_product(
 def delete_product(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Soft delete product (admin only)."""
     product = db.query(Product).filter(

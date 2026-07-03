@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, Customer
 from schemas import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerSearchResponse
-from auth import get_current_user, check_admin
+from auth import get_current_user, check_admin, check_write_access
 from utils import fuzzy_search_customers, parse_excel_customers
 from typing import List
 
@@ -98,7 +98,7 @@ def search_customers(
 def create_customer(
     customer: CustomerCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Create a new customer (admin only)."""
     existing = db.query(Customer).filter(
@@ -143,7 +143,7 @@ def update_customer(
     customer_id: int,
     customer_update: CustomerUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Update customer (admin only)."""
     customer = db.query(Customer).filter(
@@ -210,7 +210,7 @@ def get_customer(
 def delete_customer(
     customer_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Soft delete customer (admin only)."""
     customer = db.query(Customer).filter(
@@ -233,7 +233,7 @@ def delete_customer(
 def upload_customers_excel(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Upload customers from Excel file (admin only)."""
     if not file.filename.endswith(('.xlsx', '.xls')):

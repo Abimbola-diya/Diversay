@@ -4,7 +4,7 @@ from sqlalchemy import and_, or_, func
 from database import get_db
 from models import User, Order, OrderLineItem, Product, Customer, AuditLog, OrderStatus, ActionType
 from schemas import OrderCreate, OrderUpdate, OrderStatusUpdate, OrderResponse, OrderDetailResponse, AuditLogResponse, MarkDeliveredRequest
-from auth import get_current_user, check_admin
+from auth import get_current_user, check_admin, check_write_access
 from utils import calculate_order_status, calculate_delivery_duration, generate_order_number, get_order_with_details, calculate_hours_overdue
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -62,7 +62,7 @@ def get_order_snapshot(order: Order):
 def create_order(
     order_create: OrderCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Create a new order (admin only)."""
     customer = db.query(Customer).filter(
@@ -299,7 +299,7 @@ def update_order(
     order_id: int,
     order_update: OrderUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Update order (admin only)."""
     order = db.query(Order).filter(
@@ -392,7 +392,7 @@ def update_order_status_endpoint(
     order_id: int,
     status_update: OrderStatusUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Update order status manually (admin only)."""
     order = db.query(Order).filter(
@@ -424,7 +424,7 @@ def mark_order_delivered(
     order_id: int,
     delivered_request: MarkDeliveredRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Mark order as delivered (admin only)."""
     order = db.query(Order).filter(
@@ -455,7 +455,7 @@ def mark_order_delivered(
 def delete_order(
     order_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_admin)
+    current_user: User = Depends(check_write_access)
 ):
     """Soft delete order (admin only)."""
     order = db.query(Order).filter(
