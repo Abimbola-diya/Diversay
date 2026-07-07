@@ -269,13 +269,25 @@ export default function StoreDetailPage() {
     <div className="animate-in fade-in duration-300 space-y-6">
       {/* Back navigation & Header */}
       <div className="space-y-4">
-        <button 
-          onClick={() => navigate('/store')}
-          className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm font-semibold transition-colors group"
-        >
-          <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-          Back to Store Registry
-        </button>
+        <div className="flex items-center justify-between gap-4">
+          <button 
+            onClick={() => navigate('/store')}
+            className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm font-semibold transition-colors group"
+          >
+            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+            Back to Store Registry
+          </button>
+
+          {hasWriteAccess && (
+            <button
+              onClick={handleOpenAddModal}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/35 rounded-xl text-xs font-bold transition-all duration-200 active:scale-[0.97]"
+            >
+              <Plus size={14} />
+              Add Product to Store
+            </button>
+          )}
+        </div>
 
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-start gap-4">
@@ -299,29 +311,18 @@ export default function StoreDetailPage() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 self-start md:self-auto">
-            <div className="flex gap-4 text-xs font-semibold text-zinc-400 border border-zinc-800 bg-zinc-950 p-3 rounded-xl">
-              {store.phone && (
-                <div className="flex items-center gap-1.5">
-                  <Phone size={14} className="text-zinc-500" />
-                  <span>{store.phone}</span>
-                </div>
-              )}
-              {store.manager_name && (
-                <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-4">
-                  <User size={14} className="text-zinc-500" />
-                  <span>Manager: {store.manager_name}</span>
-                </div>
-              )}
-            </div>
-            {hasWriteAccess && (
-              <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-2 px-4.5 py-3 bg-emerald-800 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-950/20 active:scale-[0.96] border border-emerald-600/30 shrink-0"
-              >
-                <Plus size={15} />
-                Add Product
-              </button>
+          <div className="flex gap-4 text-xs font-semibold text-zinc-400 border border-zinc-800 bg-zinc-950 p-3 rounded-xl self-start md:self-auto">
+            {store.phone && (
+              <div className="flex items-center gap-1.5">
+                <Phone size={14} className="text-zinc-500" />
+                <span>{store.phone}</span>
+              </div>
+            )}
+            {store.manager_name && (
+              <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-4">
+                <User size={14} className="text-zinc-500" />
+                <span>Manager: {store.manager_name}</span>
+              </div>
             )}
           </div>
         </div>
