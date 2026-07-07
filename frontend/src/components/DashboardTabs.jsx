@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
-import { AlertCircle, Clock, TrendingUp, Activity, ChevronRight } from 'lucide-react'
+import { AlertCircle, Clock, TrendingUp, Activity, ChevronRight, Check } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function DashboardTabs() {
@@ -54,6 +54,7 @@ export default function DashboardTabs() {
 
       // Process notifications: Pending approvals + Overdue orders
       const now = new Date()
+      const acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
       const notificationsList = [
         ...pendingUsers.map(user => ({
           id: `approval-${user.id}`,
@@ -74,34 +75,59 @@ export default function DashboardTabs() {
             priority: 'high',
             order: o
           }))
-      ]
+      ].filter(n => !acknowledgedIds.includes(n.id))
       setNotifications(notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)))
 
       // Process activities: Recent order status changes (mock - in production would come from audit logs)
-      const activitiesList = orders.slice(0, 10).map(o => ({
-        id: o.id,
+      const activitiesList = orders.map(o => ({
+        id: `activity-${o.id}`,
+        orderId: o.id,
         type: 'order_update',
         title: `Order ${o.order_status.toLowerCase()}`,
         message: `${o.customer_name} - ${o.order_number}`,
         timestamp: o.updated_at,
         action: o.order_status
-      }))
+      })).filter(act => !acknowledgedIds.includes(act.id)).slice(0, 10)
       setActivities(activitiesList)
 
       // Scheduled Deliveries: Orders with future expected delivery times
       const scheduled = orders.filter(o => {
-        const expectedDate = new Date(o.expected_delivery_time)
+        const expectedDate = new Date(o.expected_expected_delivery_time || o.expected_delivery_time)
         return expectedDate > now && !o.actual_delivery_time
-      }).slice(0, 10)
+      }).map(o => ({
+        ...o,
+        uniqueId: `scheduled-${o.id}`
+      })).filter(o => !acknowledgedIds.includes(o.uniqueId)).slice(0, 10)
       setScheduledDeliveries(scheduled)
 
       // Pending Issues: All delayed orders
-      const delayed = orders.filter(o => o.order_status === 'Delayed').slice(0, 10)
+      const delayed = orders.filter(o => o.order_status === 'Delayed')
+        .map(o => ({
+          ...o,
+          uniqueId: `pending-${o.id}`
+        })).filter(o => !acknowledgedIds.includes(o.uniqueId)).slice(0, 10)
       setPendingIssues(delayed)
     } catch (err) {
       console.error('Failed to fetch tab data:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAcknowledge = (id, tabType) => {
+    const acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
+    if (!acknowledgedIds.includes(id)) {
+      const updated = [...acknowledgedIds, id]
+      localStorage.setItem('acknowledged_notifications', JSON.stringify(updated))
+    }
+    if (tabType === 'notifications') {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    } else if (tabType === 'activities') {
+      setActivities(prev => prev.filter(a => a.id !== id))
+    } else if (tabType === 'scheduled') {
+      setScheduledDeliveries(prev => prev.filter(o => o.uniqueId !== id))
+    } else if (tabType === 'pending') {
+      setPendingIssues(prev => prev.filter(o => o.uniqueId !== id))
     }
   }
 
@@ -137,6 +163,7 @@ export default function DashboardTabs() {
             ) : (
               notifications.map(notif => {
                 const handleClick = () => {
+                  handleAcknowledge(notif.id, 'notifications')
                   if (notif.type === 'approval') {
                     navigate('/admin/approvals')
                   } else if (notif.type === 'delayed' && notif.order?.id) {
@@ -149,24 +176,36 @@ export default function DashboardTabs() {
                     onClick={handleClick}
                     className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">
                             {notif.title}
                           </h4>
                           {notif.priority === 'high' && (
-                            <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded border border-red-500/30">
+                            <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded border border-red-500/30 font-bold uppercase tracking-wider">
                               High
                             </span>
                           )}
                         </div>
                         <p className="text-zinc-400 text-sm">{notif.message}</p>
-                        <p className="text-zinc-500 text-xs mt-2">
+                        <p className="text-zinc-550 text-[10px] font-semibold mt-2 text-zinc-500">
                           {formatDistanceToNow(new Date(notif.timestamp), { addSuffix: true })}
                         </p>
                       </div>
-                      <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
+                      <div className="flex items-center gap-3 shrink-0 ml-4">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleAcknowledge(notif.id, 'notifications')
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
+                        >
+                          <Check size={12} className="text-white" />
+                          Acknowledge
+                        </button>
+                        <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
+                      </div>
                     </div>
                   </div>
                 )
@@ -181,26 +220,46 @@ export default function DashboardTabs() {
             {activities.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No recent activities</div>
             ) : (
-              activities.map(activity => (
-                <div
-                  key={activity.id}
-                  onClick={() => activity.id && navigate(`/orders/${activity.id}`)}
-                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-white capitalize group-hover:text-zinc-300 transition-colors">
-                        {activity.action}
-                      </h4>
-                      <p className="text-zinc-400 text-sm">{activity.message}</p>
-                      <p className="text-zinc-500 text-xs mt-2">
-                        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
-                      </p>
+              activities.map(activity => {
+                const handleClick = () => {
+                  handleAcknowledge(activity.id, 'activities')
+                  if (activity.orderId) {
+                    navigate(`/orders/${activity.orderId}`)
+                  }
+                }
+                return (
+                  <div
+                    key={activity.id}
+                    onClick={handleClick}
+                    className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-white capitalize group-hover:text-zinc-300 transition-colors">
+                          {activity.action}
+                        </h4>
+                        <p className="text-zinc-400 text-sm">{activity.message}</p>
+                        <p className="text-zinc-500 text-[10px] font-semibold mt-2 text-zinc-500">
+                          {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 ml-4">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleAcknowledge(activity.id, 'activities')
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
+                        >
+                          <Check size={12} className="text-white" />
+                          Acknowledge
+                        </button>
+                        <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
+                      </div>
                     </div>
-                    <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         )
@@ -211,35 +270,55 @@ export default function DashboardTabs() {
             {scheduledDeliveries.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No scheduled deliveries</div>
             ) : (
-              scheduledDeliveries.map(order => (
-                <div
-                  key={order.id}
-                  onClick={() => order.id && navigate(`/orders/${order.id}`)}
-                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">{order.customer_name}</h4>
-                        <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
-                          {order.order_number}
-                        </span>
-                      </div>
-                      <p className="text-zinc-400 text-sm mt-1">
-                        Expected delivery: {new Date(order.expected_delivery_time).toLocaleDateString()}
-                      </p>
-                      <div className="flex gap-2 mt-2 flex-wrap">
-                        {order.line_items?.slice(0, 2).map((item, idx) => (
-                          <span key={idx} className="text-xs bg-zinc-750 text-zinc-300 px-2 py-1 rounded">
-                            {item.product_name} × {item.quantity}
+              scheduledDeliveries.map(order => {
+                const handleClick = () => {
+                  handleAcknowledge(order.uniqueId, 'scheduled')
+                  if (order.id) {
+                    navigate(`/orders/${order.id}`)
+                  }
+                }
+                return (
+                  <div
+                    key={order.id}
+                    onClick={handleClick}
+                    className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">{order.customer_name}</h4>
+                          <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
+                            {order.order_number}
                           </span>
-                        ))}
+                        </div>
+                        <p className="text-zinc-400 text-sm mt-1">
+                          Expected delivery: {new Date(order.expected_delivery_time).toLocaleDateString()}
+                        </p>
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          {order.line_items?.slice(0, 2).map((item, idx) => (
+                            <span key={idx} className="text-xs bg-zinc-750 text-zinc-300 px-2 py-1 rounded font-semibold">
+                              {item.product_name} × {item.quantity}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 ml-4">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleAcknowledge(order.uniqueId, 'scheduled')
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
+                        >
+                          <Check size={12} className="text-white" />
+                          Acknowledge
+                        </button>
+                        <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                       </div>
                     </div>
-                    <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         )
@@ -250,31 +329,51 @@ export default function DashboardTabs() {
             {pendingIssues.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No pending issues</div>
             ) : (
-              pendingIssues.map(order => (
-                <div
-                  key={order.id}
-                  onClick={() => order.id && navigate(`/orders/${order.id}`)}
-                  className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 transition-colors cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-red-400 group-hover:text-red-300 transition-colors">{order.customer_name}</h4>
-                        <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded border border-red-500/30">
-                          {order.order_number}
-                        </span>
+              pendingIssues.map(order => {
+                const handleClick = () => {
+                  handleAcknowledge(order.uniqueId, 'pending')
+                  if (order.id) {
+                    navigate(`/orders/${order.id}`)
+                  }
+                }
+                return (
+                  <div
+                    key={order.id}
+                    onClick={handleClick}
+                    className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-red-400 group-hover:text-red-300 transition-colors">{order.customer_name}</h4>
+                          <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded border border-red-500/30 font-bold">
+                            {order.order_number}
+                          </span>
+                        </div>
+                        <p className="text-zinc-400 text-sm">
+                          Expected: {new Date(order.expected_delivery_time).toLocaleDateString()}
+                        </p>
+                        <p className="text-red-400 text-xs mt-1 font-semibold">
+                          Status: <span className="font-bold">{order.order_status}</span>
+                        </p>
                       </div>
-                      <p className="text-zinc-400 text-sm">
-                        Expected: {new Date(order.expected_delivery_time).toLocaleDateString()}
-                      </p>
-                      <p className="text-red-400 text-xs mt-1">
-                        Status: <strong>{order.order_status}</strong>
-                      </p>
+                      <div className="flex items-center gap-3 shrink-0 ml-4">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleAcknowledge(order.uniqueId, 'pending')
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
+                        >
+                          <Check size={12} className="text-white" />
+                          Acknowledge
+                        </button>
+                        <ChevronRight size={20} className="text-red-500 group-hover:text-red-400" />
+                      </div>
                     </div>
-                    <ChevronRight size={20} className="text-red-500 group-hover:text-red-400" />
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         )

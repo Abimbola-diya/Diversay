@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routes import auth, customers, products, orders, analytics
+from routes import auth, customers, products, orders, analytics, stores
 from config import get_settings
 import logging
+logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -93,6 +94,56 @@ def seed_products():
     finally:
         db.close()
 
+def seed_stores():
+    import random
+    from models import Store, Product, StoreInventory
+    db = SessionLocal()
+    try:
+        stores_data = [
+            {"name": "Lagos Store (Agege)", "city": "Agege", "state": "Lagos", "address": "Central Warehouse & Production Factory, Agege, Lagos", "is_central": True, "phone": "+234 801 000 0001", "manager_name": "Grace"},
+            {"name": "Awe Store", "city": "Awe", "state": "Nasarawa", "address": "Awe Distribution Centre, Nasarawa", "is_central": False, "phone": "+234 801 000 0002", "manager_name": None},
+            {"name": "Jos Store", "city": "Jos", "state": "Plateau", "address": "Jos Warehouse, Plateau State", "is_central": False, "phone": "+234 801 000 0003", "manager_name": None},
+            {"name": "Owerri Store", "city": "Owerri", "state": "Imo", "address": "Owerri Distribution Hub, Imo State", "is_central": False, "phone": "+234 801 000 0004", "manager_name": None},
+            {"name": "Abuja Store", "city": "Abuja", "state": "FCT", "address": "Abuja Logistics Centre, FCT", "is_central": False, "phone": "+234 801 000 0005", "manager_name": None},
+            {"name": "Port Harcourt Store", "city": "Port Harcourt", "state": "Rivers", "address": "PH Warehouse, Rivers State", "is_central": False, "phone": "+234 801 000 0006", "manager_name": None},
+            {"name": "Kaduna Store", "city": "Kaduna", "state": "Kaduna", "address": "Kaduna Distribution Point, Kaduna State", "is_central": False, "phone": "+234 801 000 0007", "manager_name": None},
+        ]
+        
+        products = db.query(Product).filter(Product.is_deleted == False).all()
+        existing_stores = {s.name: s for s in db.query(Store).filter(Store.is_deleted == False).all()}
+        
+        existing_inv_keys = {
+            (inv.store_id, inv.product_id) 
+            for inv in db.query(StoreInventory.store_id, StoreInventory.product_id).all()
+        }
+        
+        for store_data in stores_data:
+            store_name = store_data["name"]
+            if store_name not in existing_stores:
+                logger.info(f"Seeding store: {store_name}")
+                store = Store(**store_data)
+                db.add(store)
+                db.commit()
+                db.refresh(store)
+                existing_stores[store_name] = store
+            
+            store = existing_stores[store_name]
+            for p in products:
+                if (store.id, p.id) not in existing_inv_keys:
+                    stock_val = float(random.randint(150, 600)) if store.is_central else float(random.randint(0, 120))
+                    if not store.is_central and random.random() < 0.15:
+                        stock_val = 0.0
+                    new_inv = StoreInventory(store_id=store.id, product_id=p.id, stock=stock_val)
+                    db.add(new_inv)
+                    
+        db.commit()
+        logger.info("Stores and inventories seeded successfully!")
+    except Exception as e:
+        logger.error(f"Error seeding stores: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 # Create tables (with error handling in case DB is unavailable)
 try:
     Base.metadata.create_all(bind=engine)
@@ -104,6 +155,7 @@ try:
         conn.commit()
     seed_admin_user()
     seed_products()
+    seed_stores()
 except Exception as e:
     logger.warning(f"Could not create tables or run migrations on startup: {e}. Database may be unavailable.")
 
@@ -135,6 +187,7 @@ app.include_router(customers.router)
 app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(analytics.router)
+app.include_router(stores.router)
 
 @app.get("/")
 def root():

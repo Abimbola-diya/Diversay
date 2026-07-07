@@ -236,3 +236,54 @@ class DashboardMetrics(BaseModel):
     orders_last_30_days: List[OrderMetrics]
     total_orders_30_days: int
     orders_growth_percentage: float
+
+# ============ Store Schemas ============
+class StoreCreate(BaseModel):
+    name: str
+    city: str
+    state: str
+    address: Optional[str] = None
+    is_central: bool = False
+    phone: Optional[str] = None
+    manager_name: Optional[str] = None
+
+class StoreUpdate(BaseModel):
+    name: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    address: Optional[str] = None
+    is_central: Optional[bool] = None
+    phone: Optional[str] = None
+    manager_name: Optional[str] = None
+
+class StoreResponse(BaseModel):
+    id: int
+    name: str
+    city: str
+    state: str
+    address: Optional[str]
+    is_central: bool
+    phone: Optional[str]
+    manager_name: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class StoreInventoryResponse(BaseModel):
+    id: int
+    store_id: int
+    product_id: int
+    product_name: str
+    product_category: str
+    default_unit: str
+    stock: float
+    unit_price: float
+    
+    class Config:
+        from_attributes = True
+
+class StoreInventoryUpdate(BaseModel):
+    stock: float
+

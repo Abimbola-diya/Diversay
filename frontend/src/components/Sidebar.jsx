@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { LayoutDashboard, Package, Users, BarChart3, LogOut, CheckSquare, ShieldAlert, Columns, Plus } from 'lucide-react'
+import { LayoutDashboard, Package, Users, Store, LogOut, CheckSquare, ShieldAlert, Columns, Plus } from 'lucide-react'
 import CreateOrderModal from './CreateOrderModal'
 import AccessGatewayModal from './AccessGatewayModal'
 
@@ -26,7 +26,7 @@ export default function Sidebar({ isOpen: propIsOpen, setIsOpen: propSetIsOpen }
     { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { label: 'Orders', icon: Package, path: '/orders' },
     { label: 'Customers', icon: Users, path: '/customers' },
-    { label: 'Products', icon: BarChart3, path: '/products' },
+    { label: 'Store', icon: Store, path: '/store' },
     user?.role === 'admin' && { label: 'Approvals', icon: CheckSquare, path: '/admin/approvals' }
   ].filter(Boolean)
 

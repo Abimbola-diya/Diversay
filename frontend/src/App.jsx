@@ -11,7 +11,8 @@ import OrdersPage from './pages/OrdersPage'
 import OrderDetailPage from './pages/OrderDetailPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
-import ProductsPage from './pages/ProductsPage'
+import StorePage from './pages/StorePage'
+import StoreDetailPage from './pages/StoreDetailPage'
 import SplashPage from './pages/SplashPage'
 import RequestAccessPage from './pages/RequestAccessPage'
 import WeeklyCustomersPage from './pages/WeeklyCustomersPage'
@@ -34,7 +35,8 @@ function App() {
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:id" element={<CustomerDetailPage />} />
               <Route path="/weekly-customers" element={<WeeklyCustomersPage />} />
-              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/store" element={<StorePage />} />
+              <Route path="/store/:id" element={<StoreDetailPage />} />
               <Route path="/request-access" element={<RequestAccessPage />} />
             </Route>
           </Route>

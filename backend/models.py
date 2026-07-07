@@ -132,3 +132,29 @@ class AuditLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     
     user = relationship("User", back_populates="audit_logs")
+
+class Store(Base):
+    __tablename__ = "stores"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    city = Column(String, nullable=False)
+    state = Column(String, nullable=False)
+    address = Column(String, nullable=True)
+    is_central = Column(Boolean, default=False)
+    phone = Column(String, nullable=True)
+    manager_name = Column(String, nullable=True)
+    is_deleted = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class StoreInventory(Base):
+    __tablename__ = "store_inventories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    stock = Column(Float, default=0.0, nullable=False)
+    
+    store = relationship("Store", backref="inventories")
+    product = relationship("Product", backref="store_inventories")
