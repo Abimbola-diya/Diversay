@@ -10,6 +10,8 @@ import {
   Search, 
   ArrowUpDown, 
   ChevronDown,
+  Grid,
+  List,
   Package, 
   Crown, 
   Factory, 
@@ -36,6 +38,7 @@ export default function StoreDetailPage() {
   const [filterStock, setFilterStock] = useState('all')
   const [sortBy, setSortBy] = useState('name-asc')
   const [isSortOpen, setIsSortOpen] = useState(false)
+  const [viewMode, setViewMode] = useState('grid')
   
   const [adjustItem, setAdjustItem] = useState(null)
   const [adjustValue, setAdjustValue] = useState('')
@@ -425,6 +428,26 @@ export default function StoreDetailPage() {
               </>
             )}
           </div>
+
+          {/* Grid / List View Toggle */}
+          <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-white'}`}
+              title="Grid View"
+            >
+              <Grid size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500 hover:text-white'}`}
+              title="List View"
+            >
+              <List size={15} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -434,6 +457,91 @@ export default function StoreDetailPage() {
           <Package className="mx-auto text-zinc-650 mb-3" size={48} />
           <h3 className="text-lg font-bold text-white uppercase">No products match</h3>
           <p className="text-zinc-500 text-sm mt-1">Try adjusting filters or search query.</p>
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl overflow-hidden shadow-xl animate-in fade-in duration-200">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-zinc-800/80 bg-zinc-950/50 text-[10px] uppercase tracking-wider text-zinc-550 font-bold">
+                  <th className="px-6 py-4">Product</th>
+                  <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4 text-right">Stock Level</th>
+                  <th className="px-6 py-4">Status</th>
+                  {hasWriteAccess && <th className="px-6 py-4 text-right">Actions</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/50 text-sm">
+                {filteredInventory.map((item) => {
+                  const isOut = item.stock === 0
+                  const isLow = item.stock > 0 && item.stock <= 15
+                  
+                  return (
+                    <tr 
+                      key={item.id} 
+                      className="hover:bg-zinc-800/20 transition-colors group"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center border
+                            ${isOut 
+                              ? 'bg-red-500/10 border-red-500/20 text-red-400' 
+                              : isLow 
+                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
+                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}
+                          >
+                            <Package size={16} />
+                          </div>
+                          <span className="font-extrabold text-white group-hover:text-emerald-400 transition-colors">
+                            {item.product_name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-2.5 py-0.5 bg-zinc-950 border border-zinc-800 rounded-lg text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                          {item.product_category || 'Other'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`font-black text-sm ${isOut ? 'text-red-400' : isLow ? 'text-amber-400' : 'text-zinc-100'}`}>
+                          {item.stock}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 font-bold ml-1 uppercase">
+                          {item.default_unit.toLowerCase()}{item.stock !== 1 ? 's' : ''}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {isOut ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-black uppercase rounded-lg tracking-wider">
+                            Out of Stock
+                          </span>
+                        ) : isLow ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] font-black uppercase rounded-lg tracking-wider">
+                            Low Stock
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-black uppercase rounded-lg tracking-wider">
+                            In Stock
+                          </span>
+                        )}
+                      </td>
+                      {hasWriteAccess && (
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => handleOpenAdjust(item)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-750 text-zinc-350 hover:text-white rounded-lg text-xs font-bold transition-all active:scale-[0.96]"
+                          >
+                            <Edit3 size={12} />
+                            Adjust Stock
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
