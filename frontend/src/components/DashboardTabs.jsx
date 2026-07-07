@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { AlertCircle, Clock, TrendingUp, Activity, ChevronRight } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function DashboardTabs() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('notifications')
   const [notifications, setNotifications] = useState([])
   const [activities, setActivities] = useState([])
@@ -133,32 +135,42 @@ export default function DashboardTabs() {
             {notifications.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No notifications</div>
             ) : (
-              notifications.map(notif => (
-                <div
-                  key={notif.id}
-                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">
-                          {notif.title}
-                        </h4>
-                        {notif.priority === 'high' && (
-                          <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded border border-red-500/30">
-                            High
-                          </span>
-                        )}
+              notifications.map(notif => {
+                const handleClick = () => {
+                  if (notif.type === 'approval') {
+                    navigate('/admin/approvals')
+                  } else if (notif.type === 'delayed' && notif.order?.id) {
+                    navigate(`/orders/${notif.order.id}`)
+                  }
+                }
+                return (
+                  <div
+                    key={notif.id}
+                    onClick={handleClick}
+                    className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">
+                            {notif.title}
+                          </h4>
+                          {notif.priority === 'high' && (
+                            <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded border border-red-500/30">
+                              High
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-zinc-400 text-sm">{notif.message}</p>
+                        <p className="text-zinc-500 text-xs mt-2">
+                          {formatDistanceToNow(new Date(notif.timestamp), { addSuffix: true })}
+                        </p>
                       </div>
-                      <p className="text-zinc-400 text-sm">{notif.message}</p>
-                      <p className="text-zinc-500 text-xs mt-2">
-                        {formatDistanceToNow(new Date(notif.timestamp), { addSuffix: true })}
-                      </p>
+                      <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                     </div>
-                    <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         )
@@ -172,11 +184,12 @@ export default function DashboardTabs() {
               activities.map(activity => (
                 <div
                   key={activity.id}
-                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors"
+                  onClick={() => activity.id && navigate(`/orders/${activity.id}`)}
+                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h4 className="font-semibold text-white capitalize">
+                      <h4 className="font-semibold text-white capitalize group-hover:text-zinc-300 transition-colors">
                         {activity.action}
                       </h4>
                       <p className="text-zinc-400 text-sm">{activity.message}</p>
@@ -184,6 +197,7 @@ export default function DashboardTabs() {
                         {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
                       </p>
                     </div>
+                    <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                   </div>
                 </div>
               ))
@@ -200,28 +214,29 @@ export default function DashboardTabs() {
               scheduledDeliveries.map(order => (
                 <div
                   key={order.id}
-                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors"
+                  onClick={() => order.id && navigate(`/orders/${order.id}`)}
+                  className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-white">{order.customer_name}</h4>
+                        <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">{order.customer_name}</h4>
                         <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
                           {order.order_number}
                         </span>
                       </div>
-                      <p className="text-zinc-400 text-sm">
+                      <p className="text-zinc-400 text-sm mt-1">
                         Expected delivery: {new Date(order.expected_delivery_time).toLocaleDateString()}
                       </p>
                       <div className="flex gap-2 mt-2 flex-wrap">
                         {order.line_items?.slice(0, 2).map((item, idx) => (
-                          <span key={idx} className="text-xs bg-zinc-700 text-zinc-300 px-2 py-1 rounded">
+                          <span key={idx} className="text-xs bg-zinc-750 text-zinc-300 px-2 py-1 rounded">
                             {item.product_name} × {item.quantity}
                           </span>
                         ))}
                       </div>
                     </div>
-                    <ChevronRight size={20} className="text-zinc-500" />
+                    <ChevronRight size={20} className="text-zinc-500 group-hover:text-zinc-400" />
                   </div>
                 </div>
               ))
@@ -238,12 +253,13 @@ export default function DashboardTabs() {
               pendingIssues.map(order => (
                 <div
                   key={order.id}
-                  className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 transition-colors"
+                  onClick={() => order.id && navigate(`/orders/${order.id}`)}
+                  className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-red-400">{order.customer_name}</h4>
+                        <h4 className="font-semibold text-red-400 group-hover:text-red-300 transition-colors">{order.customer_name}</h4>
                         <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded border border-red-500/30">
                           {order.order_number}
                         </span>
@@ -255,7 +271,7 @@ export default function DashboardTabs() {
                         Status: <strong>{order.order_status}</strong>
                       </p>
                     </div>
-                    <ChevronRight size={20} className="text-red-500" />
+                    <ChevronRight size={20} className="text-red-500 group-hover:text-red-400" />
                   </div>
                 </div>
               ))

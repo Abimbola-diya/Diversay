@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import api, { getWithCache, isCached } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import AccessGatewayModal from '../components/AccessGatewayModal'
@@ -55,6 +55,7 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
 
 export default function OrderDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [order, setOrder] = useState(null)
   const [auditLogs, setAuditLogs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -583,12 +584,12 @@ export default function OrderDetailPage() {
       <div className="max-w-3xl mx-auto mt-8 bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center">
         <AlertTriangle size={48} className="mx-auto text-red-400 mb-4" />
         <p className="text-zinc-300 font-semibold text-lg">{error || "Order not found"}</p>
-        <Link
-          to="/orders"
+        <button
+          onClick={() => navigate(-1)}
           className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-all"
         >
-          <ArrowLeft size={16} /> Back to Orders
-        </Link>
+          <ArrowLeft size={16} /> Go Back
+        </button>
       </div>
     )
   }  const displayOrder = previewCommit ? previewCommit.state_snapshot : order
@@ -601,12 +602,12 @@ export default function OrderDetailPage() {
       {/* Navigation & Actions Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-          <Link
-            to="/orders"
-            className="inline-flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-3 text-sm"
+          <button
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-3 text-sm bg-transparent border-none cursor-pointer"
           >
-            <ArrowLeft size={16} /> Back to Orders
-          </Link>
+            <ArrowLeft size={16} /> Go Back
+          </button>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-extrabold text-white">{order.order_number}</h1>
             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${statusConfig.color}`}>

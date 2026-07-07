@@ -2,26 +2,34 @@ import React, { useState, useEffect, useRef } from 'react'
 import api, { getWithCache, isCached } from '../services/api'
 import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar, ArrowRight, MapPin } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 // Module-level state — survives component unmount/remount during route navigation
 let _cached = null
 
 export default function OrdersTable() {
+  const location = useLocation()
+  const navState = location.state || {}
+
   const [orders, setOrders] = useState(() => _cached?.orders ?? [])
-  const containerRef = useRef(null)
-  const [loading, setLoading] = useState(() => !_cached)
+  const [loading, setLoading] = useState(() => !_cached || !!location.state)
   const [error, setError] = useState(null)
   const [page, setPage] = useState(() => _cached?.page ?? 0)
   const [totalOrders, setTotalOrders] = useState(() => _cached?.totalOrders ?? 0)
-  const [searchTerm, setSearchTerm] = useState(() => _cached?.searchTerm ?? '')
-  const [filterState, setFilterState] = useState(() => _cached?.filterState ?? '')
-  const [filterStatus, setFilterStatus] = useState(() => _cached?.filterStatus ?? '')
-  const [filterProductType, setFilterProductType] = useState(() => _cached?.filterProductType ?? '')
-  const [dateRange, setDateRange] = useState(() => _cached?.dateRange ?? '30days')
+  const [searchTerm, setSearchTerm] = useState(() => navState.searchTerm ?? _cached?.searchTerm ?? '')
+  const [filterState, setFilterState] = useState(() => navState.filterState ?? _cached?.filterState ?? '')
+  const [filterStatus, setFilterStatus] = useState(() => navState.filterStatus ?? _cached?.filterStatus ?? '')
+  const [filterProductType, setFilterProductType] = useState(() => navState.filterProductType ?? _cached?.filterProductType ?? '')
+  const [dateRange, setDateRange] = useState(() => navState.dateRange ?? _cached?.dateRange ?? '30days')
   const [expandedRows, setExpandedRows] = useState(new Set())
   const [scrollPosition, setScrollPosition] = useState({})
   const fetchRequestRef = useRef(0)
+
+  useEffect(() => {
+    if (location.state) {
+      window.history.replaceState(null, '')
+    }
+  }, [location])
 
   const pageSize = 15
 
@@ -68,6 +76,14 @@ export default function OrdersTable() {
         const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
         params.start_date = thirtyDaysAgo.toISOString()
         params.end_date = now.toISOString()
+      } else if (dateRange === '7days') {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        params.start_date = sevenDaysAgo.toISOString()
+        params.end_date = now.toISOString()
+      } else if (dateRange === 'today') {
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        params.start_date = startOfToday.toISOString()
+        params.end_date = now.toISOString()
       }
 
       const response = await api.get('/orders', { params })
@@ -96,81 +112,97 @@ export default function OrdersTable() {
   }
 
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-
     let targetScroll = window.scrollY
+    let currentScroll = window.scrollY
     let animationFrameId = null
+    let isAnimating = false
+
+    const smoothScroll = () => {
+      const actualScroll = window.scrollY
+      
+      // If scroll position was changed externally (e.g. native scroll or browser adjust),
+      // sync immediately to prevent jumps.
+      if (Math.abs(actualScroll - currentScroll) > 1) {
+        currentScroll = actualScroll
+        targetScroll = actualScroll
+      }
+
+      const diff = targetScroll - currentScroll
+      if (Math.abs(diff) > 0.5) {
+        // Fluid glide decay interpolation
+        currentScroll = currentScroll + diff * 0.075
+        window.scrollTo(0, currentScroll)
+        animationFrameId = requestAnimationFrame(smoothScroll)
+      } else {
+        window.scrollTo(0, targetScroll)
+        currentScroll = targetScroll
+        isAnimating = false
+        animationFrameId = null
+      }
+    }
 
     const handleWheel = (e) => {
-      // Check if mouse is hovering over the cards list container
-      const rect = el.getBoundingClientRect()
-      const isHovering = (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-      )
+      // Don't intercept pinch-to-zoom or horizontal scroll
+      if (e.ctrlKey || Math.abs(e.deltaY) === 0) return
 
-      if (isHovering) {
-        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
-        const currentScroll = window.scrollY
-
-        // Prevent vibration and overshoot at page boundaries
-        if ((e.deltaY > 0 && currentScroll >= maxScroll - 1) || (e.deltaY < 0 && currentScroll <= 1)) {
-          e.preventDefault()
-          return
-        }
-
+      if (e.cancelable) {
         e.preventDefault()
 
-        // If not currently animating, synchronize targetScroll to current scroll position
-        if (!animationFrameId) {
-          targetScroll = window.scrollY
+        const actualScroll = window.scrollY
+        if (Math.abs(actualScroll - currentScroll) > 1) {
+          currentScroll = actualScroll
+          targetScroll = actualScroll
         }
 
-        // Dampen the scroll input speed
-        const speedMultiplier = 0.40
-        targetScroll += e.deltaY * speedMultiplier
+        // Normalize delta
+        let delta = e.deltaY
+        if (e.deltaMode === 1) {
+          delta *= 33
+        } else if (e.deltaMode === 2) {
+          delta *= window.innerHeight
+        }
 
+        // Dampen the speed by 25% (multiplier 0.75)
+        targetScroll += delta * 0.75
+
+        // Clamp target scroll boundaries
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
         targetScroll = Math.max(0, Math.min(targetScroll, maxScroll))
 
-        const smoothScroll = () => {
-          const currentScroll = window.scrollY
-          const diff = targetScroll - currentScroll
-          if (Math.abs(diff) > 0.5) {
-            // Smooth fluid glide interpolation
-            const nextScroll = currentScroll + diff * 0.08
-            window.scrollTo(0, nextScroll)
-
-            // Boundary detection: if the scroll position did not change, we hit the document limit
-            const postScroll = window.scrollY
-            if (Math.abs(postScroll - currentScroll) < 0.1) {
-              targetScroll = postScroll
-              animationFrameId = null
-              return
-            }
-
-            animationFrameId = requestAnimationFrame(smoothScroll)
-          } else {
-            window.scrollTo(0, targetScroll)
-            animationFrameId = null
-          }
-        }
-
-        if (!animationFrameId) {
+        if (!isAnimating) {
+          isAnimating = true
           animationFrameId = requestAnimationFrame(smoothScroll)
         }
+      } else {
+        // If the event is non-cancelable (e.g. native trackpad compositor inertia),
+        // stop JS animation and synchronize to avoid fighting.
+        isAnimating = false
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId)
+          animationFrameId = null
+        }
+        currentScroll = window.scrollY
+        targetScroll = window.scrollY
+      }
+    }
+
+    // Keep targets synced during native scrolling phases
+    const handleScroll = () => {
+      if (!isAnimating) {
+        currentScroll = window.scrollY
+        targetScroll = window.scrollY
       }
     }
 
     window.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('scroll', handleScroll, { passive: true })
 
     return () => {
       window.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('scroll', handleScroll)
       if (animationFrameId) cancelAnimationFrame(animationFrameId)
     }
-  }, [loading, orders])
+  }, [])
 
   const toggleRowExpand = (orderId) => {
     const newExpanded = new Set(expandedRows)
@@ -551,7 +583,7 @@ export default function OrdersTable() {
         </div>
       ) : (
         <div className="p-6 flex flex-col gap-6 bg-zinc-950/20">
-          <div ref={containerRef} className="relative z-10 flex flex-col gap-20 pb-32">
+          <div className="relative z-10 flex flex-col gap-20 pb-32">
             {orders.map((order, index) => {
               const stateName = order.customer_state || 'DESTINATION'
               const stateCode = stateName.substring(0, 3).toUpperCase()

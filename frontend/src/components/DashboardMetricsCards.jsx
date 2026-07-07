@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api, { getWithCache } from '../services/api'
 import { Package, AlertCircle, TrendingUp, Users } from 'lucide-react'
 
 export default function DashboardMetricsCards() {
+  const navigate = useNavigate()
   const [metrics, setMetrics] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -79,6 +81,22 @@ export default function DashboardMetricsCards() {
     }
   ]
 
+  const handleCardClick = (title) => {
+    if (title === "Today's Orders") {
+      navigate('/orders', { state: { dateRange: 'today', filterStatus: '' } })
+    } else if (title === 'In Transit') {
+      navigate('/orders', { state: { filterStatus: 'In Transit', dateRange: 'all' } })
+    } else if (title === 'Delayed Orders') {
+      navigate('/orders', { state: { filterStatus: 'Delayed', dateRange: 'all' } })
+    } else if (title === 'This Week') {
+      // "This Week" tracks orders delivered in the current week.
+      // We can filter by dateRange: '7days' and show all orders.
+      navigate('/orders', { state: { dateRange: '7days', filterStatus: '' } })
+    } else if (title === 'Total Customers') {
+      navigate('/weekly-customers')
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 animate-fadeIn">
       {cards.map((card, index) => {
@@ -86,6 +104,7 @@ export default function DashboardMetricsCards() {
         return (
           <div
             key={index}
+            onClick={() => handleCardClick(card.title)}
             className="bg-zinc-800/20 border border-zinc-800/80 hover:border-zinc-600/85 hover:bg-zinc-800/50 hover:-translate-y-1 rounded-xl p-5 shadow-sm hover:shadow-lg hover:shadow-white/[0.02] transition-all group duration-300 cursor-pointer"
           >
             <div className="flex items-start justify-between">

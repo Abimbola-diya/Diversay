@@ -14,6 +14,7 @@ import CustomerDetailPage from './pages/CustomerDetailPage'
 import ProductsPage from './pages/ProductsPage'
 import SplashPage from './pages/SplashPage'
 import RequestAccessPage from './pages/RequestAccessPage'
+import WeeklyCustomersPage from './pages/WeeklyCustomersPage'
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
               <Route path="/orders/:id" element={<OrderDetailPage />} />
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:id" element={<CustomerDetailPage />} />
+              <Route path="/weekly-customers" element={<WeeklyCustomersPage />} />
               <Route path="/products" element={<ProductsPage />} />
               <Route path="/request-access" element={<RequestAccessPage />} />
             </Route>
