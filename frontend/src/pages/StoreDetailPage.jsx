@@ -295,7 +295,7 @@ export default function StoreDetailPage() {
               {store.is_central ? <Factory size={28} /> : <Building2 size={28} />}
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-black text-white uppercase tracking-tight">{store.name}</h1>
                 {store.is_central && (
                   <span className="flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[9px] font-bold uppercase tracking-wider text-amber-400">
@@ -303,27 +303,24 @@ export default function StoreDetailPage() {
                     Central Store (HQ)
                   </span>
                 )}
+                {store.phone && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl">
+                    <Phone size={13} className="text-zinc-500" />
+                    <span>{store.phone}</span>
+                  </div>
+                )}
+                {store.manager_name && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl">
+                    <User size={13} className="text-zinc-500" />
+                    <span>Manager: {store.manager_name}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 text-zinc-400 text-sm mt-1">
+              <div className="flex items-center gap-1.5 text-zinc-400 text-sm mt-2">
                 <MapPin size={14} className="text-zinc-500" />
                 <span>{store.address || `${store.city}, ${store.state}`}</span>
               </div>
             </div>
-          </div>
-
-          <div className="flex gap-4 text-xs font-semibold text-zinc-400 border border-zinc-800 bg-zinc-950 p-3 rounded-xl self-start md:self-auto">
-            {store.phone && (
-              <div className="flex items-center gap-1.5">
-                <Phone size={14} className="text-zinc-500" />
-                <span>{store.phone}</span>
-              </div>
-            )}
-            {store.manager_name && (
-              <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-4">
-                <User size={14} className="text-zinc-500" />
-                <span>Manager: {store.manager_name}</span>
-              </div>
-            )}
           </div>
         </div>
       </div>
