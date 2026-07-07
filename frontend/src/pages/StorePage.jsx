@@ -31,7 +31,7 @@ export default function StorePage() {
   const fetchStores = async () => {
     try {
       setLoading(true)
-      const res = await api.get('/stores')
+      const res = await api.get('/stores/')
       setStores(res.data || [])
     } catch (err) {
       console.error('Failed to load stores:', err)
@@ -210,7 +210,7 @@ function AddStoreModal({ onClose, onCreated }) {
     try {
       setSubmitting(true)
       setError('')
-      await api.post('/stores', form)
+      await api.post('/stores/', form)
       onCreated()
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create store.')
