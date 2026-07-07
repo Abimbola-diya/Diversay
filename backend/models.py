@@ -25,6 +25,9 @@ class UnitType(str, enum.Enum):
     KEG = "Keg"
     BAG = "Bag"
     SACHET = "Sachet"
+    PCS = "Pcs"
+    DRUM = "Drum"
+    BOTTLE = "Bottle"
 
 class ActionType(str, enum.Enum):
     CREATE = "create"

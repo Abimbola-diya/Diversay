@@ -15,6 +15,7 @@ import {
   Building2, 
   Edit3, 
   X,
+  Plus,
   AlertTriangle,
   CheckCircle,
   XCircle,
@@ -38,6 +39,18 @@ export default function StoreDetailPage() {
   const [adjustValue, setAdjustValue] = useState('')
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState('')
+
+  // Add Product State
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [addMode, setAddMode] = useState('existing') // 'existing' | 'new'
+  const [globalProducts, setGlobalProducts] = useState([])
+  const [selectedProductId, setSelectedProductId] = useState('')
+  const [newProdName, setNewProdName] = useState('')
+  const [newProdCategory, setNewProdCategory] = useState('Other')
+  const [newProdUnit, setNewProdUnit] = useState('Carton')
+  const [initialStock, setInitialStock] = useState('0')
+  const [modalLoading, setModalLoading] = useState(false)
+  const [modalError, setModalError] = useState('')
 
   const hasWriteAccess = user?.role === 'admin' || user?.has_write_access === true
 
@@ -138,6 +151,99 @@ export default function StoreDetailPage() {
     }
   }
 
+  const handleOpenAddModal = async () => {
+    setShowAddModal(true)
+    setAddMode('existing')
+    setSelectedProductId('')
+    setNewProdName('')
+    setNewProdCategory('Other')
+    setNewProdUnit('Carton')
+    setInitialStock('0')
+    setModalError('')
+    
+    try {
+      setModalLoading(true)
+      const res = await api.get('/products?limit=1000')
+      const existingIds = new Set(inventory.map(item => item.product_id))
+      const available = (res.data.items || []).filter(p => !existingIds.has(p.id))
+      setGlobalProducts(available)
+    } catch (err) {
+      setModalError('Failed to load global products list.')
+    } finally {
+      setModalLoading(false)
+    }
+  }
+
+  const handleAddProduct = async (e) => {
+    e.preventDefault()
+    setModalError('')
+    
+    const stockVal = parseFloat(initialStock)
+    if (isNaN(stockVal) || stockVal < 0) {
+      setModalError('Initial stock must be >= 0')
+      return
+    }
+
+    setUpdating(true)
+    try {
+      let productId = selectedProductId
+      let productName = ''
+      let productCategory = ''
+      let productUnit = ''
+      
+      if (addMode === 'new') {
+        if (!newProdName.trim()) {
+          setModalError('Product name is required')
+          setUpdating(false)
+          return
+        }
+        const prodRes = await api.post('/products', {
+          name: newProdName.trim(),
+          category: newProdCategory,
+          default_unit: newProdUnit
+        })
+        productId = prodRes.data.id
+        productName = prodRes.data.name
+        productCategory = prodRes.data.category
+        productUnit = prodRes.data.default_unit
+      } else {
+        if (!productId) {
+          setModalError('Please select a product')
+          setUpdating(false)
+          return
+        }
+        const selected = globalProducts.find(p => p.id === parseInt(productId))
+        productName = selected.name
+        productCategory = selected.category
+        productUnit = selected.default_unit
+      }
+
+      const invRes = await api.put(`/stores/${id}/inventory/${productId}`, {
+        stock: stockVal
+      })
+
+      setInventory(prev => [
+        ...prev,
+        {
+          id: invRes.data.id,
+          store_id: parseInt(id),
+          product_id: parseInt(productId),
+          product_name: productName,
+          product_category: productCategory,
+          default_unit: productUnit,
+          stock: stockVal,
+          unit_price: 0.0
+        }
+      ])
+      
+      setShowAddModal(false)
+    } catch (err) {
+      setModalError(err.response?.data?.detail || 'Failed to add product to store.')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
@@ -193,18 +299,29 @@ export default function StoreDetailPage() {
             </div>
           </div>
 
-          <div className="flex gap-4 text-xs font-semibold text-zinc-400 border border-zinc-800 bg-zinc-950 p-3 rounded-xl self-start md:self-auto">
-            {store.phone && (
-              <div className="flex items-center gap-1.5">
-                <Phone size={14} className="text-zinc-500" />
-                <span>{store.phone}</span>
-              </div>
-            )}
-            {store.manager_name && (
-              <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-4">
-                <User size={14} className="text-zinc-500" />
-                <span>Manager: {store.manager_name}</span>
-              </div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 self-start md:self-auto">
+            <div className="flex gap-4 text-xs font-semibold text-zinc-400 border border-zinc-800 bg-zinc-950 p-3 rounded-xl">
+              {store.phone && (
+                <div className="flex items-center gap-1.5">
+                  <Phone size={14} className="text-zinc-500" />
+                  <span>{store.phone}</span>
+                </div>
+              )}
+              {store.manager_name && (
+                <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-4">
+                  <User size={14} className="text-zinc-500" />
+                  <span>Manager: {store.manager_name}</span>
+                </div>
+              )}
+            </div>
+            {hasWriteAccess && (
+              <button
+                onClick={handleOpenAddModal}
+                className="flex items-center gap-2 px-4.5 py-3 bg-emerald-800 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-950/20 active:scale-[0.96] border border-emerald-600/30 shrink-0"
+              >
+                <Plus size={15} />
+                Add Product
+              </button>
             )}
           </div>
         </div>
@@ -425,6 +542,174 @@ export default function StoreDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Product to Registry Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowAddModal(false)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md mx-4 p-6 shadow-2xl animate-in slide-in-from-bottom-4 duration-300" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-black text-white uppercase tracking-tight">Add Product to Registry</h2>
+                <p className="text-zinc-400 text-xs mt-0.5 font-medium truncate max-w-[280px]">
+                  Register or create a product for this store.
+                </p>
+              </div>
+              <button onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Error */}
+            {modalError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-semibold">
+                {modalError}
+              </div>
+            )}
+
+            {/* Modal Tabs */}
+            <div className="flex border-b border-zinc-800 mb-4">
+              <button
+                type="button"
+                onClick={() => setAddMode('existing')}
+                className={`flex-1 pb-2.5 text-xs font-bold transition-colors
+                  ${addMode === 'existing' 
+                    ? 'border-b-2 border-emerald-500 text-white' 
+                    : 'text-zinc-400 hover:text-white'}`}
+              >
+                Select Existing Product
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddMode('new')}
+                className={`flex-1 pb-2.5 text-xs font-bold transition-colors
+                  ${addMode === 'new' 
+                    ? 'border-b-2 border-emerald-500 text-white' 
+                    : 'text-zinc-400 hover:text-white'}`}
+              >
+                Create New Product
+              </button>
+            </div>
+
+            {modalLoading ? (
+              <div className="flex flex-col items-center justify-center py-8 space-y-2">
+                <Loader2 className="animate-spin text-emerald-500" size={24} />
+                <p className="text-zinc-500 text-xs font-semibold">Loading catalog items...</p>
+              </div>
+            ) : (
+              <form onSubmit={handleAddProduct} className="space-y-4">
+                {addMode === 'existing' ? (
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
+                      Select Product
+                    </label>
+                    {globalProducts.length === 0 ? (
+                      <div className="text-zinc-500 text-xs p-3 bg-zinc-950 border border-zinc-800 rounded-xl">
+                        No additional products available in global catalog to add. Create a new one!
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedProductId}
+                        onChange={(e) => setSelectedProductId(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors focus:outline-none cursor-pointer"
+                      >
+                        <option value="">-- Choose Product --</option>
+                        {globalProducts.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.default_unit})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
+                        Product Name
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Enrol 1L"
+                        value={newProdName}
+                        onChange={(e) => setNewProdName(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
+                          Category
+                        </label>
+                        <select
+                          value={newProdCategory}
+                          onChange={(e) => setNewProdCategory(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none cursor-pointer"
+                        >
+                          <option value="Poultry">Poultry</option>
+                          <option value="Equine">Equine</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
+                          Default Unit
+                        </label>
+                        <select
+                          value={newProdUnit}
+                          onChange={(e) => setNewProdUnit(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none cursor-pointer"
+                        >
+                          <option value="Carton">Carton</option>
+                          <option value="Keg">Keg</option>
+                          <option value="Bag">Bag</option>
+                          <option value="Sachet">Sachet</option>
+                          <option value="Pcs">Pcs</option>
+                          <option value="Drum">Drum</option>
+                          <option value="Bottle">Bottle</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
+                    Initial Stock Level
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={initialStock}
+                    onChange={(e) => setInitialStock(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex gap-3 justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-xs font-bold rounded-xl transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updating || (addMode === 'existing' && globalProducts.length === 0)}
+                    className="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-lg shadow-emerald-500/10 active:scale-[0.98]"
+                  >
+                    {updating && <Loader2 className="animate-spin" size={13} />}
+                    Confirm Add
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
