@@ -9,6 +9,7 @@ import {
   User, 
   Search, 
   ArrowUpDown, 
+  ChevronDown,
   Package, 
   Crown, 
   Factory, 
@@ -34,6 +35,7 @@ export default function StoreDetailPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStock, setFilterStock] = useState('all')
   const [sortBy, setSortBy] = useState('name-asc')
+  const [isSortOpen, setIsSortOpen] = useState(false)
   
   const [adjustItem, setAdjustItem] = useState(null)
   const [adjustValue, setAdjustValue] = useState('')
@@ -378,18 +380,50 @@ export default function StoreDetailPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
-            <ArrowUpDown size={14} className="text-zinc-550" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent text-xs font-bold text-zinc-300 focus:outline-none cursor-pointer pr-1"
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsSortOpen(!isSortOpen)}
+              className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 hover:border-zinc-750 text-xs font-bold text-zinc-300 rounded-xl px-3.5 py-2.5 transition-all duration-200 active:scale-[0.97]"
             >
-              <option value="name-asc">Product Name: A to Z</option>
-              <option value="name-desc">Product Name: Z to A</option>
-              <option value="stock-desc">Stock: High to Low</option>
-              <option value="stock-asc">Stock: Low to High</option>
-            </select>
+              <ArrowUpDown size={14} className="text-zinc-500" />
+              <span>{
+                sortBy === 'name-asc' ? 'Product Name: A to Z' :
+                sortBy === 'name-desc' ? 'Product Name: Z to A' :
+                sortBy === 'stock-desc' ? 'Stock: High to Low' :
+                'Stock: Low to High'
+              }</span>
+              <ChevronDown size={14} className={`text-zinc-550 transition-transform duration-250 ${isSortOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isSortOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsSortOpen(false)} />
+                <div className="absolute right-0 mt-2 w-48 bg-zinc-950 border border-zinc-800 rounded-xl py-1.5 shadow-2xl z-20 animate-in fade-in slide-in-from-top-2 duration-150">
+                  {[
+                    { value: 'name-asc', label: 'Product Name: A to Z' },
+                    { value: 'name-desc', label: 'Product Name: Z to A' },
+                    { value: 'stock-desc', label: 'Stock: High to Low' },
+                    { value: 'stock-asc', label: 'Stock: Low to High' }
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setSortBy(option.value)
+                        setIsSortOpen(false)
+                      }}
+                      className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-colors
+                        ${sortBy === option.value 
+                          ? 'bg-emerald-500/10 text-emerald-400' 
+                          : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -247,5 +247,11 @@ input:-webkit-autofill:active {
   animation-play-state: paused;
 }
 
+/* Dark mode options overrides for native select fields */
+select option {
+  background-color: #09090b !important; /* bg-zinc-950 */
+  color: #ffffff !important;
+}
+
 
 
