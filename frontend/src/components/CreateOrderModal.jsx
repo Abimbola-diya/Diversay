@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle } from 'lucide-react'
-import api from '../services/api'
+import api, { getWithCache } from '../services/api'
 
 // Dropdown component for fuzzy product search
 const ProductSearchDropdown = ({ query, products, onSelect }) => {
@@ -75,16 +75,24 @@ const searchCustomersLocally = (query, customersList) => {
 export default function CreateOrderModal({ isOpen, onClose }) {
   const [products, setProducts] = useState([])
   const [customers, setCustomers] = useState([])
+  const [stores, setStores] = useState([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [centralStoreId, setCentralStoreId] = useState('')
 
-  const createInitialOrderObject = () => ({
+  const createInitialOrderObject = (defaultSourceId = '') => ({
     id: Math.random().toString(36).substr(2, 9),
     customerId: '',
     customerSearchQuery: '',
+    customerState: '',
+    customerCity: '',
     matchingCustomers: [],
     showCustomerDropdown: false,
+    pipelineType: '2-node', // '2-node' (direct regional to customer) or '3-node' (central to regional to customer)
+    regionalStoreId: '', // selected regional store ID
+    sourceStoreId: defaultSourceId,
+    destinationStoreId: '',
     waybillNumber: '',
     invoiceNumber: '',
     dispatchTime: '',
@@ -92,6 +100,9 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     deliveryTimeError: '',
     driverName: '',
     vehicleNumber: '',
+    fuelCost: '0',
+    waybillCost: '0',
+    otherCosts: [],
     notes: '',
     lineItems: [
       { product_id: '', quantity: 1, unit: 'Carton', searchQuery: '' }
@@ -141,14 +152,21 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     try {
       setLoading(true)
       setError(null)
-      const [productsRes, customersRes] = await Promise.all([
-        api.get('/products', { params: { limit: 100 } }),
-        api.get('/customers', { params: { limit: 1000 } })
+      const [productsRes, customersRes, storesRes] = await Promise.all([
+        getWithCache('/products', { params: { limit: 100 } }),
+        getWithCache('/customers', { params: { limit: 1000 } }),
+        getWithCache('/stores')
       ])
-      const fetchedProducts = productsRes.data.items || []
-      const fetchedCustomers = customersRes.data.items || []
+      const fetchedProducts = productsRes.data.items || productsRes.data || []
+      const fetchedCustomers = customersRes.data.items || customersRes.data || []
+      const fetchedStores = storesRes.data || []
       setProducts(fetchedProducts)
       setCustomers(fetchedCustomers)
+      setStores(fetchedStores)
+
+      const centralStore = fetchedStores.find(s => s.is_central)
+      const centralStoreIdStr = centralStore ? centralStore.id.toString() : ''
+      setCentralStoreId(centralStoreIdStr)
 
       // Initialize searchQuery for line items if pre-selected, and also resolve customer search typed during load
       setBatchOrders(prevOrders => prevOrders.map(order => {
@@ -167,6 +185,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
 
         return {
           ...order,
+          sourceStoreId: order.sourceStoreId || centralStoreIdStr,
           lineItems: updatedLineItems,
           matchingCustomers: matched.slice(0, 4),
           showCustomerDropdown: order.customerSearchQuery ? true : order.showCustomerDropdown
@@ -182,7 +201,9 @@ export default function CreateOrderModal({ isOpen, onClose }) {
 
   // Add another order card to batch
   const handleAddOrder = () => {
-    setBatchOrders([...batchOrders, createInitialOrderObject()])
+    const centralStore = stores.find(s => s.is_central)
+    const centralStoreId = centralStore ? centralStore.id.toString() : ''
+    setBatchOrders([...batchOrders, createInitialOrderObject(centralStoreId)])
   }
 
   // Remove order card from batch
@@ -197,10 +218,15 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       if (o.id === sourceOrder.id) return o
       return {
         ...o,
+        sourceStoreId: sourceOrder.sourceStoreId,
+        destinationStoreId: sourceOrder.destinationStoreId,
         dispatchTime: sourceOrder.dispatchTime,
         expectedDeliveryTime: sourceOrder.expectedDeliveryTime,
         driverName: sourceOrder.driverName,
         vehicleNumber: sourceOrder.vehicleNumber,
+        fuelCost: sourceOrder.fuelCost,
+        waybillCost: sourceOrder.waybillCost,
+        otherCosts: sourceOrder.otherCosts.map(c => ({ ...c, id: Math.random().toString(36).substr(2, 9) })),
         deliveryTimeError: ''
       }
     }))
@@ -231,8 +257,35 @@ export default function CreateOrderModal({ isOpen, onClose }) {
           ...o,
           customerId: customer.id.toString(),
           customerSearchQuery: customer.name,
+          customerState: customer.state || '',
+          customerCity: customer.city || '',
           showCustomerDropdown: false,
           matchingCustomers: []
+        }
+      }
+      return o
+    }))
+  }
+
+  const handleRoutingChange = (orderId, updates) => {
+    setBatchOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        const merged = { ...o, ...updates }
+        let sourceId = merged.sourceStoreId
+        let destId = merged.destinationStoreId
+        
+        if (merged.pipelineType === '2-node') {
+          sourceId = merged.regionalStoreId
+          destId = ''
+        } else if (merged.pipelineType === '3-node') {
+          sourceId = centralStoreId
+          destId = merged.regionalStoreId
+        }
+        
+        return {
+          ...merged,
+          sourceStoreId: sourceId,
+          destinationStoreId: destId
         }
       }
       return o
@@ -298,6 +351,10 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         setError(`Please select a customer for ${orderLabel}.`)
         return
       }
+      if (!order.regionalStoreId) {
+        setError(`Please select a regional store for ${orderLabel} to define the fulfillment route pipeline.`)
+        return
+      }
       if (!order.dispatchTime || !order.expectedDeliveryTime) {
         setError(`Please specify dispatch and expected delivery times for ${orderLabel}.`)
         return
@@ -323,12 +380,17 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       const requests = batchOrders.map(order => {
         const payload = {
           customer_id: parseInt(order.customerId),
+          source_store_id: order.sourceStoreId ? parseInt(order.sourceStoreId) : null,
+          destination_store_id: order.destinationStoreId ? parseInt(order.destinationStoreId) : null,
           waybill_number: order.waybillNumber || null,
           invoice_number: order.invoiceNumber || null,
           dispatch_time: new Date(order.dispatchTime).toISOString(),
           expected_delivery_time: new Date(order.expectedDeliveryTime).toISOString(),
           driver_name: order.driverName || null,
           vehicle_number: order.vehicleNumber || null,
+          fuel_cost: parseFloat(order.fuelCost || 0),
+          waybill_cost: parseFloat(order.waybillCost || 0),
+          other_costs: order.otherCosts.map(c => ({ name: c.name, amount: parseFloat(c.amount || 0) })),
           notes: order.notes || null,
           line_items: order.lineItems.map(item => ({
             product_id: parseInt(item.product_id),
@@ -345,7 +407,9 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       window.dispatchEvent(new Event('order-created'))
 
       // Reset form
-      setBatchOrders([createInitialOrderObject()])
+      const centralStore = stores.find(s => s.is_central)
+      const centralStoreId = centralStore ? centralStore.id.toString() : ''
+      setBatchOrders([createInitialOrderObject(centralStoreId)])
       onClose()
     } catch (err) {
       console.error('Failed to create orders batch:', err)
@@ -490,6 +554,124 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                             }}
                             className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors text-sm"
                           />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 1.5: Fulfillment Route Pipeline */}
+                  <div className="space-y-4 pt-4 border-t border-zinc-850">
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                      <Truck size={14} /> Fulfillment Route Pipeline
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Regional Store Selector */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                          Regional Store <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          required
+                          value={order.regionalStoreId || ''}
+                          onChange={(e) => {
+                            handleRoutingChange(order.id, { regionalStoreId: e.target.value })
+                          }}
+                          className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
+                        >
+                          <option value="">-- Select Store --</option>
+                          {stores.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} {s.is_central ? '(Central HQ)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Pipeline Type selector */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                          Routing Model
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 bg-zinc-950/60 p-1 border border-zinc-800 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => handleRoutingChange(order.id, { pipelineType: '2-node' })}
+                            className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                              order.pipelineType === '2-node'
+                                ? 'bg-zinc-850 text-emerald-400 shadow-md border border-zinc-700/50'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            2-Node Direct
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRoutingChange(order.id, { pipelineType: '3-node' })}
+                            className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                              order.pipelineType === '3-node'
+                                ? 'bg-zinc-850 text-emerald-400 shadow-md border border-zinc-700/50'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            3-Node Supply
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual Routing Pipeline diagram */}
+                    <div className="bg-zinc-950/40 border border-zinc-850/60 rounded-xl p-4 mt-3 flex flex-col items-center justify-center space-y-3 min-h-[90px] overflow-hidden">
+                      <span className="text-[9px] uppercase tracking-widest text-zinc-550 font-bold">Route Path Preview</span>
+                      
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm font-semibold w-full">
+                        {order.pipelineType === '3-node' && (
+                          <>
+                            {/* Node 1: Lagos Central Store */}
+                            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
+                              <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">Supply Source</span>
+                              <span className="text-zinc-200 text-xs truncate block">Lagos Store (HQ)</span>
+                            </div>
+                            
+                            {/* Supply arrow */}
+                            <div className="flex flex-col items-center text-[9px] text-zinc-500 shrink-0 sm:rotate-0 rotate-90 my-1 sm:my-0">
+                              <span className="font-bold tracking-wider text-amber-500/80 uppercase">Supply</span>
+                              <div className="flex items-center text-zinc-600 text-[10px]">
+                                <span>──➔</span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        
+                        {/* Node 2: Regional Store */}
+                        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
+                          <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">
+                            {order.pipelineType === '3-node' ? 'Transfer Hub' : 'Departure Store'}
+                          </span>
+                          <span className="text-zinc-200 text-xs truncate block">
+                            {stores.find(s => s.id.toString() === order.regionalStoreId)?.name || 'Select Store'}
+                          </span>
+                        </div>
+ 
+                        {/* Delivery transit arrow */}
+                        <div className="flex flex-col items-center text-[9px] text-zinc-500 shrink-0 sm:rotate-0 rotate-90 my-1 sm:my-0">
+                          <span className="font-bold tracking-wider text-emerald-500/80 uppercase">Transit</span>
+                          <div className="flex items-center text-zinc-600 text-[10px]">
+                            <span>──➔</span>
+                          </div>
+                        </div>
+ 
+                        {/* Node 3: Customer destination */}
+                        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
+                          <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">Destination</span>
+                          <span className="text-zinc-200 text-xs truncate block">
+                            {order.customerSearchQuery || 'Customer'}
+                          </span>
+                          {(order.customerCity || order.customerState) && (
+                            <span className="text-[9px] text-zinc-500 block truncate">
+                              {order.customerCity ? `${order.customerCity}, ` : ''}{order.customerState}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -687,6 +869,129 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Step 3.5: Logistics Costs */}
+                  <div className="space-y-4 pt-4 border-t border-zinc-850">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                        <span className="text-zinc-550 font-bold">$</span> Logistics Costs
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBatchOrders(prev => prev.map(o => {
+                            if (o.id !== order.id) return o
+                            return {
+                              ...o,
+                              otherCosts: [
+                                ...o.otherCosts,
+                                { id: Math.random().toString(36).substr(2, 9), name: '', amount: '0' }
+                              ]
+                            }
+                          }))
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 hover:text-white text-xs font-semibold rounded-lg border border-zinc-700 transition-colors"
+                        title="Add Custom Cost Item"
+                      >
+                        <Plus size={13} />
+                        Add Cost
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                          Fuel Cost (₦)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          min="0"
+                          step="any"
+                          value={order.fuelCost}
+                          onChange={(e) => {
+                            setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, fuelCost: e.target.value } : o))
+                          }}
+                          className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                          Waybill Cost (₦)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          min="0"
+                          step="any"
+                          value={order.waybillCost}
+                          onChange={(e) => {
+                            setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, waybillCost: e.target.value } : o))
+                          }}
+                          className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Custom Costs list */}
+                    {order.otherCosts && order.otherCosts.length > 0 && (
+                      <div className="space-y-3 pt-2">
+                        {order.otherCosts.map((cost, costIdx) => (
+                          <div key={cost.id} className="flex gap-3 items-center bg-zinc-950/30 p-3 rounded-xl border border-zinc-800 animate-in fade-in duration-200">
+                            <div className="flex-1">
+                              <input
+                                type="text"
+                                placeholder="Cost Name (e.g. Loading Fee)"
+                                required
+                                value={cost.name}
+                                onChange={(e) => {
+                                  setBatchOrders(prev => prev.map(o => {
+                                    if (o.id !== order.id) return o
+                                    const updatedCosts = [...o.otherCosts]
+                                    updatedCosts[costIdx] = { ...updatedCosts[costIdx], name: e.target.value }
+                                    return { ...o, otherCosts: updatedCosts }
+                                  }))
+                                }}
+                                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-550 focus:outline-none focus:border-white transition-colors text-sm"
+                              />
+                            </div>
+                            <div className="w-32">
+                              <input
+                                type="number"
+                                placeholder="Amount"
+                                min="0"
+                                step="any"
+                                required
+                                value={cost.amount}
+                                onChange={(e) => {
+                                  setBatchOrders(prev => prev.map(o => {
+                                    if (o.id !== order.id) return o
+                                    const updatedCosts = [...o.otherCosts]
+                                    updatedCosts[costIdx] = { ...updatedCosts[costIdx], amount: e.target.value }
+                                    return { ...o, otherCosts: updatedCosts }
+                                  }))
+                                }}
+                                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBatchOrders(prev => prev.map(o => {
+                                  if (o.id !== order.id) return o
+                                  return { ...o, otherCosts: o.otherCosts.filter(c => c.id !== cost.id) }
+                                }))
+                              }}
+                              className="p-2 hover:bg-red-500/10 hover:text-red-400 text-zinc-500 rounded-lg transition-colors flex-shrink-0"
+                              title="Remove Cost Item"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Step 4: Notes */}

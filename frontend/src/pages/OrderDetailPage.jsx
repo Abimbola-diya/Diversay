@@ -165,6 +165,9 @@ export default function OrderDetailPage() {
   const [editActualDelivery, setEditActualDelivery] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editLineItems, setEditLineItems] = useState([])
+  const [editFuelCost, setEditFuelCost] = useState('0')
+  const [editWaybillCost, setEditWaybillCost] = useState('0')
+  const [editOtherCosts, setEditOtherCosts] = useState([])
   const [commitMessage, setCommitMessage] = useState('')
   const [activeProductSearchIndex, setActiveProductSearchIndex] = useState(null)
 
@@ -359,8 +362,8 @@ export default function OrderDetailPage() {
 
   const fetchProducts = async () => {
     try {
-      const res = await api.get('/products', { params: { limit: 100 } })
-      setProducts(res.data.items || [])
+      const res = await getWithCache('/products', { params: { limit: 100 } })
+      setProducts(res.data.items || res.data || [])
     } catch (err) {
       console.error("Failed to load products registry:", err)
     }
@@ -452,6 +455,9 @@ export default function OrderDetailPage() {
     setEditExpectedDelivery(formatForInput(order.expected_delivery_time))
     setEditActualDelivery(formatForInput(order.actual_delivery_time))
     setEditNotes(order.notes || '')
+    setEditFuelCost(order.fuel_cost !== undefined ? order.fuel_cost.toString() : '0')
+    setEditWaybillCost(order.waybill_cost !== undefined ? order.waybill_cost.toString() : '0')
+    setEditOtherCosts(order.other_costs ? order.other_costs.map(c => ({ id: Math.random().toString(36).substr(2, 9), ...c })) : [])
     setEditLineItems(order.line_items.map(item => ({
       product_id: item.product_id.toString(),
       searchQuery: item.product_name || '',
@@ -506,6 +512,9 @@ export default function OrderDetailPage() {
         driver_name: editDriver || null,
         vehicle_number: editVehicle || null,
         notes: editNotes || null,
+        fuel_cost: parseFloat(editFuelCost || 0),
+        waybill_cost: parseFloat(editWaybillCost || 0),
+        other_costs: editOtherCosts.map(c => ({ name: c.name, amount: parseFloat(c.amount || 0) })),
         line_items: editLineItems.map(item => ({
           product_id: parseInt(item.product_id),
           quantity: parseFloat(item.quantity),
@@ -690,48 +699,123 @@ export default function OrderDetailPage() {
           <Truck size={16} className="text-zinc-500" />
           Fulfillment Route Pipeline
         </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
-          {/* Departure and Connective Pipeline */}
-          <div className="lg:col-span-2 flex flex-col sm:flex-row gap-6 items-center justify-between">
-            {/* Departure */}
-            <div className="flex-1 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/80 flex items-start gap-3 w-full">
-              <div className="p-2 bg-zinc-900 rounded-lg text-zinc-400">
-                <MapPin size={18} />
+               {displayOrder.source_store_is_central && displayOrder.destination_store_name ? (
+          /* 3-Node Pipeline: Central Store -> Regional Store -> Customer */
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-3 w-full">
+            {/* Node 1: Central Store */}
+            <div className="bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-800/80 flex items-start gap-2.5 flex-1 min-w-0 w-full">
+              <div className="p-2 bg-zinc-900 rounded-lg text-amber-500 border border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.15)] shrink-0">
+                <MapPin size={16} />
               </div>
-              <div>
-                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Departure Port</span>
-                <span className="text-sm text-white font-bold block mt-0.5">Agege Warehouse</span>
-                <span className="text-xs text-zinc-400 block mt-0.5">Agege, Lagos State</span>
+              <div className="min-w-0 flex-1">
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Supply Source</span>
+                <span className="text-xs text-white font-bold block mt-0.5 truncate">
+                  {displayOrder.source_store_name || "Lagos Store"}
+                </span>
+                <span className="text-[10px] text-zinc-400 block mt-0.5 truncate">
+                  Central HQ
+                </span>
               </div>
             </div>
 
-            {/* Connective pipeline bar */}
-            <div className="flex flex-col items-center justify-center px-4 relative shrink-0">
-              <div className="text-[13px] font-mono font-bold text-zinc-400 uppercase tracking-[0.25em] mb-3">Transit</div>
-              <div className="text-red-500 flex items-center justify-center w-full">
-                <svg className="w-32 h-6" fill="none" viewBox="0 0 128 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 12h120M114 5l10 7-10 7" />
+            {/* Supply Line */}
+            <div className="flex flex-col items-center justify-center px-1 shrink-0 lg:rotate-0 rotate-90 my-2 lg:my-0">
+              <div className="text-[9px] font-bold text-amber-500/80 uppercase tracking-wider mb-1">Supply</div>
+              <div className="text-amber-500 flex items-center justify-center w-full">
+                <svg className="w-10 h-4" fill="none" viewBox="0 0 40 16" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h32M28 3l5 5-5 5" />
                 </svg>
               </div>
             </div>
-          </div>
 
-          {/* Destination */}
-          <div className="lg:col-span-1 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/80 flex items-start gap-3 text-white">
-            <div className="p-2 bg-white/10 text-white shadow-[0_0_12px_rgba(255,255,255,0.25)] border border-white/20 rounded-lg shrink-0">
-              <MapPin size={18} />
+            {/* Node 2: Regional Store */}
+            <div className="bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-800/80 flex items-start gap-2.5 flex-1 min-w-0 w-full">
+              <div className="p-2 bg-zinc-900 rounded-lg text-sky-400 border border-sky-500/20 shadow-[0_0_8px_rgba(14,165,233,0.15)] shrink-0">
+                <MapPin size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Transfer Hub</span>
+                <span className="text-xs text-white font-bold block mt-0.5 truncate">
+                  {displayOrder.destination_store_name}
+                </span>
+                <span className="text-[10px] text-zinc-400 block mt-0.5 truncate">
+                  Regional Inventory Store
+                </span>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Destination Address</span>
-              <span className="text-sm text-white font-bold block mt-0.5 truncate" title={displayOrder.customer_address}>
-                {displayOrder.customer_address || "No Address Registry"}
-              </span>
-              <span className="text-xs text-zinc-400 block mt-0.5">
-                {displayOrder.customer_state || "N/A"} State, Nigeria
-              </span>
+
+            {/* Transit Line */}
+            <div className="flex flex-col items-center justify-center px-1 shrink-0 lg:rotate-0 rotate-90 my-2 lg:my-0">
+              <div className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-wider mb-1">Transit</div>
+              <div className="text-emerald-500 flex items-center justify-center w-full">
+                <svg className="w-10 h-4" fill="none" viewBox="0 0 40 16" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h32M28 3l5 5-5 5" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Node 3: Customer Destination */}
+            <div className="bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-800/80 flex items-start gap-2.5 flex-1 min-w-0 w-full">
+              <div className="p-2 bg-white/10 text-white shadow-[0_0_12px_rgba(255,255,255,0.2)] border border-white/20 rounded-lg shrink-0">
+                <MapPin size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Destination Address</span>
+                <span className="text-xs text-white font-bold block mt-0.5 truncate" title={displayOrder.customer_address}>
+                  {displayOrder.customer_address || "No Address Registry"}
+                </span>
+                <span className="text-[10px] text-zinc-400 block mt-0.5 truncate">
+                  {displayOrder.customer_state ? `${displayOrder.customer_state} State, Nigeria` : "Customer Direct"}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          /* 2-Node Pipeline: Regional Store -> Customer */
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-3 w-full">
+            {/* Departure Port */}
+            <div className="bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-800/80 flex items-start gap-2.5 flex-1 min-w-0 w-full">
+              <div className="p-2 bg-zinc-900 rounded-lg text-zinc-400 border border-zinc-700/30 shrink-0">
+                <MapPin size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Departure Port (Source)</span>
+                <span className="text-xs text-white font-bold block mt-0.5 truncate">
+                  {displayOrder.source_store_name || "Agege Warehouse"}
+                </span>
+                <span className="text-[10px] text-zinc-400 block mt-0.5 truncate">
+                  {displayOrder.source_store_name ? "Regional Inventory Store" : "Agege, Lagos State"}
+                </span>
+              </div>
+            </div>
+
+            {/* Transit line */}
+            <div className="flex flex-col items-center justify-center px-1 shrink-0 lg:rotate-0 rotate-90 my-2 lg:my-0">
+              <div className="text-[9px] font-bold text-emerald-500/80 uppercase tracking-wider mb-1">Transit</div>
+              <div className="text-emerald-500 flex items-center justify-center w-full">
+                <svg className="w-10 h-4" fill="none" viewBox="0 0 40 16" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h32M28 3l5 5-5 5" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Destination Address */}
+            <div className="bg-zinc-950/50 p-3.5 rounded-xl border border-zinc-800/80 flex items-start gap-2.5 flex-1 min-w-0 w-full">
+              <div className="p-2 bg-white/10 text-white shadow-[0_0_12px_rgba(255,255,255,0.2)] border border-white/20 rounded-lg shrink-0">
+                <MapPin size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Destination Address</span>
+                <span className="text-xs text-white font-bold block mt-0.5 truncate" title={displayOrder.customer_address}>
+                  {displayOrder.customer_address || "No Address Registry"}
+                </span>
+                <span className="text-[10px] text-zinc-400 block mt-0.5 truncate">
+                  {displayOrder.customer_state ? `${displayOrder.customer_state} State, Nigeria` : "Customer Direct"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Details Ledger and Audit log section */}
@@ -1011,6 +1095,94 @@ export default function OrderDetailPage() {
                     </button>
                   </div>
                 ))}
+
+                {/* Logistics Cost Edit Section */}
+                <div className="mt-6 pt-6 border-t border-zinc-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                      <span className="text-zinc-550 font-bold">$</span> Logistics Costs Edit
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditOtherCosts([
+                          ...editOtherCosts,
+                          { id: Math.random().toString(36).substr(2, 9), name: '', amount: '0' }
+                        ])
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 hover:text-white text-xs font-semibold rounded-lg border border-zinc-700 transition-colors"
+                    >
+                      <Plus size={12} /> Add Cost
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Fuel Cost (₦)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={editFuelCost}
+                        onChange={(e) => setEditFuelCost(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Waybill Cost (₦)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={editWaybillCost}
+                        onChange={(e) => setEditWaybillCost(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {editOtherCosts.length > 0 && (
+                    <div className="space-y-2 pt-2">
+                      {editOtherCosts.map((cost, costIdx) => (
+                        <div key={cost.id} className="flex gap-2 items-center bg-zinc-950/20 p-2.5 rounded-xl border border-zinc-850">
+                          <input
+                            type="text"
+                            placeholder="Cost Name (e.g. Loading Fee)"
+                            required
+                            value={cost.name}
+                            onChange={(e) => {
+                              const updated = [...editOtherCosts]
+                              updated[costIdx].name = e.target.value
+                              setEditOtherCosts(updated)
+                            }}
+                            className="flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Amount"
+                            min="0"
+                            step="any"
+                            required
+                            value={cost.amount}
+                            onChange={(e) => {
+                              const updated = [...editOtherCosts]
+                              updated[costIdx].amount = e.target.value
+                              setEditOtherCosts(updated)
+                            }}
+                            className="w-28 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditOtherCosts(editOtherCosts.filter(c => c.id !== cost.id))}
+                            className="p-1.5 hover:bg-red-500/10 hover:text-red-400 text-zinc-555 rounded transition-colors flex-shrink-0"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1045,14 +1217,66 @@ export default function OrderDetailPage() {
               </div>
             )}
 
+            {/* Logistics Cost Breakdown Panel */}
+            {!isEditing && (
+              <div className="mt-6 p-4 rounded-xl bg-zinc-950/40 border border-zinc-850/60 space-y-3">
+                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Logistics Expenses Breakdown</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                  <div className="space-y-2">
+                    <div className="flex justify-between border-b border-zinc-900 pb-1.5">
+                      <span className="text-zinc-400">Fuel Cost:</span>
+                      <span className="font-mono text-zinc-200">{formatCurrency(displayOrder.fuel_cost || 0)}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-zinc-900 pb-1.5">
+                      <span className="text-zinc-400">Waybill Cost:</span>
+                      <span className="font-mono text-zinc-200">{formatCurrency(displayOrder.waybill_cost || 0)}</span>
+                    </div>
+                    {displayOrder.other_costs && displayOrder.other_costs.length > 0 && (
+                      displayOrder.other_costs.map((c, idx) => (
+                        <div key={idx} className="flex justify-between border-b border-zinc-900 pb-1.5">
+                          <span className="text-zinc-400">{c.name || 'Custom Cost'}:</span>
+                          <span className="font-mono text-zinc-200">{formatCurrency(c.amount || 0)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between border-b border-zinc-900 pb-1.5">
+                      <span className="text-zinc-400">Total Items Quantity:</span>
+                      <span className="font-mono text-zinc-200">
+                        {displayOrder.line_items?.reduce((acc, item) => acc + (parseFloat(item.quantity) || 0), 0) || 0} units
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-b border-zinc-900 pb-1.5">
+                      <span className="text-zinc-400">Average Expense / Unit:</span>
+                      <span className="font-mono text-zinc-200">
+                        {(() => {
+                          const totalQty = displayOrder.line_items?.reduce((acc, item) => acc + (parseFloat(item.quantity) || 0), 0) || 0;
+                          const totalAmt = displayOrder.total_amount || 0;
+                          return formatCurrency(totalQty > 0 ? totalAmt / totalQty : 0);
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Total Section */}
             <div className="mt-6 pt-6 border-t border-zinc-800 flex justify-between items-center bg-zinc-950/40 p-4 rounded-xl border border-zinc-850">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Invoice Sum Total</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                {isEditing ? 'Estimated Total Logistics Cost' : 'Total Logistics Cost'}
+              </span>
               <span className="text-2xl font-extrabold text-green-400" style={{ fontFamily: '"Lora", Georgia, serif' }}>
                 {isEditing ? (
-                  formatCurrency(editLineItems.reduce((acc, item) => acc + (getProductRate(item.product_id) * (parseFloat(item.quantity) || 0)), 0))
+                  (() => {
+                    const fuel = parseFloat(editFuelCost) || 0;
+                    const waybill = parseFloat(editWaybillCost) || 0;
+                    const other = editOtherCosts.reduce((acc, c) => acc + (parseFloat(c.amount) || 0), 0);
+                    return formatCurrency(fuel + waybill + other);
+                  })()
                 ) : (
-                  formatCurrency(displayOrder.total_amount || displayOrder.line_items?.reduce((acc, item) => acc + (item.unit_price * item.quantity), 0) || 0)
+                  formatCurrency(displayOrder.total_amount || 0)
                 )}
               </span>
             </div>

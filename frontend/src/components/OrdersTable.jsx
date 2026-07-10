@@ -18,6 +18,8 @@ export default function OrdersTable() {
   const [totalOrders, setTotalOrders] = useState(() => _cached?.totalOrders ?? 0)
   const [searchTerm, setSearchTerm] = useState(() => navState.searchTerm ?? _cached?.searchTerm ?? '')
   const [filterState, setFilterState] = useState(() => navState.filterState ?? _cached?.filterState ?? '')
+  const [searchInput, setSearchInput] = useState(searchTerm)
+  const [stateInput, setStateInput] = useState(filterState)
   const [filterStatus, setFilterStatus] = useState(() => navState.filterStatus ?? _cached?.filterStatus ?? '')
   const [filterProductType, setFilterProductType] = useState(() => navState.filterProductType ?? _cached?.filterProductType ?? '')
   const [dateRange, setDateRange] = useState(() => navState.dateRange ?? _cached?.dateRange ?? '30days')
@@ -30,6 +32,37 @@ export default function OrdersTable() {
       window.history.replaceState(null, '')
     }
   }, [location])
+
+  // Sync state if navigation state changes
+  useEffect(() => {
+    if (navState.searchTerm !== undefined && navState.searchTerm !== searchInput) {
+      setSearchInput(navState.searchTerm)
+    }
+  }, [navState.searchTerm])
+
+  useEffect(() => {
+    if (navState.filterState !== undefined && navState.filterState !== stateInput) {
+      setStateInput(navState.filterState)
+    }
+  }, [navState.filterState])
+
+  // Debounce search term changes
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchTerm(searchInput)
+      setPage(0)
+    }, 300)
+    return () => clearTimeout(handler)
+  }, [searchInput])
+
+  // Debounce filter state changes
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setFilterState(stateInput)
+      setPage(0)
+    }, 300)
+    return () => clearTimeout(handler)
+  }, [stateInput])
 
   const pageSize = 15
 
@@ -72,18 +105,19 @@ export default function OrdersTable() {
 
       // Add date range filter
       const now = new Date()
+      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
       if (dateRange === '30days') {
         const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
         params.start_date = thirtyDaysAgo.toISOString()
-        params.end_date = now.toISOString()
+        params.end_date = endOfToday.toISOString()
       } else if (dateRange === '7days') {
         const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
         params.start_date = sevenDaysAgo.toISOString()
-        params.end_date = now.toISOString()
+        params.end_date = endOfToday.toISOString()
       } else if (dateRange === 'today') {
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         params.start_date = startOfToday.toISOString()
-        params.end_date = now.toISOString()
+        params.end_date = endOfToday.toISOString()
       }
 
       const response = await api.get('/orders', { params })
@@ -409,10 +443,9 @@ export default function OrdersTable() {
             <input
               type="text"
               placeholder="Search order #..."
-              value={searchTerm}
+              value={searchInput}
               onChange={(e) => {
-                setSearchTerm(e.target.value)
-                setPage(0)
+                setSearchInput(e.target.value)
               }}
               className="w-full pl-10 pr-4 py-2 bg-transparent text-zinc-100 placeholder-zinc-500 focus:outline-none z-10 relative"
             />
@@ -507,10 +540,9 @@ export default function OrdersTable() {
             <input
               type="text"
               placeholder="Filter by state..."
-              value={filterState}
+              value={stateInput}
               onChange={(e) => {
-                setFilterState(e.target.value)
-                setPage(0)
+                setStateInput(e.target.value)
               }}
               className="w-full pl-10 pr-4 py-2 bg-transparent text-zinc-100 placeholder-zinc-500 focus:outline-none z-10 relative"
             />

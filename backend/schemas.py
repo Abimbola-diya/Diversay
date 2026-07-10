@@ -108,6 +108,7 @@ class ProductResponse(BaseModel):
     name: str
     category: ProductCategory
     default_unit: UnitType
+    brand: str
     unit_price: float
     created_at: datetime
     
@@ -136,6 +137,8 @@ class OrderLineItemResponse(BaseModel):
 # ============ Order Schemas ============
 class OrderCreate(BaseModel):
     customer_id: int
+    source_store_id: Optional[int] = None
+    destination_store_id: Optional[int] = None
     waybill_number: Optional[str] = None
     invoice_number: Optional[str] = None
     dispatch_time: datetime
@@ -143,11 +146,16 @@ class OrderCreate(BaseModel):
     notes: Optional[str] = None
     driver_name: Optional[str] = None
     vehicle_number: Optional[str] = None
+    fuel_cost: Optional[float] = 0.0
+    waybill_cost: Optional[float] = 0.0
+    other_costs: Optional[List[dict]] = []
     line_items: List[OrderLineItemCreate]
     commit_message: Optional[str] = None
 
 class OrderUpdate(BaseModel):
     customer_id: Optional[int] = None
+    source_store_id: Optional[int] = None
+    destination_store_id: Optional[int] = None
     waybill_number: Optional[str] = None
     invoice_number: Optional[str] = None
     dispatch_time: Optional[datetime] = None
@@ -156,6 +164,9 @@ class OrderUpdate(BaseModel):
     notes: Optional[str] = None
     driver_name: Optional[str] = None
     vehicle_number: Optional[str] = None
+    fuel_cost: Optional[float] = None
+    waybill_cost: Optional[float] = None
+    other_costs: Optional[List[dict]] = None
     line_items: Optional[List[OrderLineItemCreate]] = None
     commit_message: Optional[str] = None
 
@@ -174,6 +185,12 @@ class OrderResponse(BaseModel):
     customer_name: Optional[str] = None
     customer_state: Optional[str] = None
     customer_address: Optional[str] = None
+    source_store_id: Optional[int] = None
+    destination_store_id: Optional[int] = None
+    source_store_name: Optional[str] = None
+    destination_store_name: Optional[str] = None
+    source_store_is_central: Optional[bool] = False
+    destination_store_is_central: Optional[bool] = False
     dispatch_time: Optional[datetime]
     expected_delivery_time: Optional[datetime]
     actual_delivery_time: Optional[datetime]
@@ -182,6 +199,9 @@ class OrderResponse(BaseModel):
     notes: Optional[str]
     driver_name: Optional[str]
     vehicle_number: Optional[str]
+    fuel_cost: float = 0.0
+    waybill_cost: float = 0.0
+    other_costs: Optional[List[dict]] = []
     created_by_id: int
     created_at: datetime
     updated_at: datetime
@@ -278,6 +298,7 @@ class StoreInventoryResponse(BaseModel):
     product_name: str
     product_category: str
     default_unit: str
+    product_brand: str
     stock: float
     unit_price: float
     

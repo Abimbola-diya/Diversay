@@ -102,6 +102,20 @@ export const isCached = (url, config = {}) => {
   return memoryCache.has(cacheKey)
 }
 
+export const invalidateCache = (url, config = {}) => {
+  const cacheKey = config.params 
+    ? `${url}?${new URLSearchParams(config.params).toString()}` 
+    : url
+  memoryCache.delete(cacheKey)
+}
+
+export const updateCache = (url, data, config = {}) => {
+  const cacheKey = config.params 
+    ? `${url}?${new URLSearchParams(config.params).toString()}` 
+    : url
+  memoryCache.set(cacheKey, data)
+}
+
 export const clearCache = () => {
   memoryCache.clear()
   pendingPromises.clear()

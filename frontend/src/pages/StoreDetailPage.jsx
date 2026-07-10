@@ -1,7 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import api from '../services/api'
+import api, { getWithCache, isCached, invalidateCache } from '../services/api'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
+  CartesianGrid
+} from 'recharts'
+import { TrendingUp, BarChart3, PieChart as PieIcon, ArrowRightLeft } from 'lucide-react'
 import { 
   ArrowLeft, 
   MapPin, 
@@ -22,7 +38,8 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react'
 
 export default function StoreDetailPage() {
@@ -36,6 +53,7 @@ export default function StoreDetailPage() {
   
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStock, setFilterStock] = useState('all')
+  const [filterBrand, setFilterBrand] = useState('all')
   const [sortBy, setSortBy] = useState('name-asc')
   const [isSortOpen, setIsSortOpen] = useState(false)
   const [viewMode, setViewMode] = useState('grid')
@@ -59,16 +77,46 @@ export default function StoreDetailPage() {
 
   const hasWriteAccess = user?.role === 'admin' || user?.has_write_access === true
 
+  // Tab state: default to 'analytics'
+  const [activeTab, setActiveTab] = useState('analytics')
+  const [analytics, setAnalytics] = useState(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
+
   useEffect(() => {
     fetchStoreAndInventory()
+    fetchAnalytics()
   }, [id])
+
+  const fetchAnalytics = async () => {
+    try {
+      const cacheKey = `/stores/${id}/analytics`
+      const hasCached = isCached(cacheKey)
+      if (!hasCached && !analytics) {
+        setAnalyticsLoading(true)
+      }
+      const res = await getWithCache(cacheKey, {
+        onCacheUpdate: (newData) => setAnalytics(newData)
+      })
+      setAnalytics(res.data)
+    } catch (err) {
+      console.error('Failed to load store analytics:', err)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }
 
   const fetchStoreAndInventory = async () => {
     try {
-      setLoading(true)
+      const isCurrentlyLoading = !store || inventory.length === 0
+      if (isCurrentlyLoading) setLoading(true)
+      
       const [storeRes, invRes] = await Promise.all([
-        api.get(`/stores/${id}`),
-        api.get(`/stores/${id}/inventory`)
+        getWithCache(`/stores/${id}`, {
+          onCacheUpdate: (newData) => setStore(newData)
+        }),
+        getWithCache(`/stores/${id}/inventory`, {
+          onCacheUpdate: (newData) => setInventory(newData || [])
+        })
       ])
       setStore(storeRes.data)
       setInventory(invRes.data || [])
@@ -100,6 +148,13 @@ export default function StoreDetailPage() {
       result = result.filter(item => item.stock === 0)
     }
 
+    // Brand filter
+    if (filterBrand === 'dsl') {
+      result = result.filter(item => item.product_brand?.toUpperCase() === 'DSL')
+    } else if (filterBrand === 'dslp') {
+      result = result.filter(item => item.product_brand?.toUpperCase() === 'DSLP')
+    }
+
     // Sorting
     result.sort((a, b) => {
       if (sortBy === 'name-asc') return a.product_name.localeCompare(b.product_name)
@@ -110,7 +165,7 @@ export default function StoreDetailPage() {
     })
 
     return result
-  }, [inventory, searchQuery, filterStock, sortBy])
+  }, [inventory, searchQuery, filterStock, filterBrand, sortBy])
 
   // Stats calculation
   const stats = useMemo(() => {
@@ -141,6 +196,9 @@ export default function StoreDetailPage() {
       setUpdating(true)
       setError('')
       await api.put(`/stores/${id}/inventory/${adjustItem.product_id}`, { stock: val })
+      invalidateCache(`/stores/${id}/inventory`)
+      invalidateCache(`/stores/${id}/analytics`)
+      fetchAnalytics()
       
       // Update local state directly
       setInventory(prev => prev.map(item => 
@@ -151,6 +209,27 @@ export default function StoreDetailPage() {
       setAdjustItem(null)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update stock level.')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleDeleteProduct = async (product) => {
+    if (!window.confirm(`Are you sure you want to delete ${product.product_name} from this store's inventory registry?`)) {
+      return
+    }
+
+    try {
+      setUpdating(true)
+      await api.delete(`/stores/${id}/inventory/${product.product_id}`)
+      invalidateCache(`/stores/${id}/inventory`)
+      invalidateCache(`/stores/${id}/analytics`)
+      fetchAnalytics()
+      
+      // Update local state directly
+      setInventory(prev => prev.filter(item => item.product_id !== product.product_id))
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to delete product from store.')
     } finally {
       setUpdating(false)
     }
@@ -168,9 +247,10 @@ export default function StoreDetailPage() {
     
     try {
       setModalLoading(true)
-      const res = await api.get('/products?limit=1000')
+      const res = await getWithCache('/products', { params: { limit: 1000 } })
       const existingIds = new Set(inventory.map(item => item.product_id))
-      const available = (res.data.items || []).filter(p => !existingIds.has(p.id))
+      const allProducts = res.data.items || res.data || []
+      const available = allProducts.filter(p => !existingIds.has(p.id))
       setGlobalProducts(available)
     } catch (err) {
       setModalError('Failed to load global products list.')
@@ -226,6 +306,9 @@ export default function StoreDetailPage() {
       const invRes = await api.put(`/stores/${id}/inventory/${productId}`, {
         stock: stockVal
       })
+      invalidateCache(`/stores/${id}/inventory`)
+      invalidateCache(`/stores/${id}/analytics`)
+      fetchAnalytics()
 
       setInventory(prev => [
         ...prev,
@@ -354,8 +437,238 @@ export default function StoreDetailPage() {
         </div>
       </div>
 
-      {/* Controls: Search, Sort, Filter */}
-      <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-xl">
+      {/* Switcher tabs */}
+      <div className="flex border-b border-zinc-800 gap-2">
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={`flex items-center gap-2 px-5 py-3 font-semibold text-xs uppercase tracking-wider transition-all border-b-2 ${
+            activeTab === 'analytics'
+              ? 'border-emerald-500 text-white font-bold bg-emerald-500/5'
+              : 'border-transparent text-zinc-550 hover:text-zinc-300'
+          }`}
+        >
+          <BarChart3 size={14} /> Store Analytics
+        </button>
+        <button
+          onClick={() => setActiveTab('inventory')}
+          className={`flex items-center gap-2 px-5 py-3 font-semibold text-xs uppercase tracking-wider transition-all border-b-2 ${
+            activeTab === 'inventory'
+              ? 'border-emerald-500 text-white font-bold bg-emerald-500/5'
+              : 'border-transparent text-zinc-550 hover:text-zinc-300'
+          }`}
+        >
+          <Package size={14} /> See Inventory
+        </button>
+      </div>
+
+      {activeTab === 'analytics' ? (
+        analyticsLoading ? (
+          <div className="flex flex-col items-center justify-center min-h-[300px] space-y-4 bg-zinc-950/20 border border-zinc-900 rounded-2xl animate-in fade-in duration-200">
+            <Loader2 className="animate-spin text-emerald-500" size={32} />
+            <p className="text-zinc-550 text-xs font-semibold">Loading store analytics...</p>
+          </div>
+        ) : !analytics ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center animate-in fade-in duration-200">
+            <TrendingUp className="mx-auto text-zinc-650 mb-3" size={48} />
+            <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">No Analytics Data</h3>
+            <p className="text-zinc-500 text-xs mt-1 font-medium">This store doesn't have any logged transactions or transfers yet.</p>
+          </div>
+        ) : (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Analytics Stats Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-700 transition-colors">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Total Inbound Transfers</p>
+                    <p className="text-2xl font-black text-white mt-1">{analytics.total_incoming}</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <ArrowRightLeft size={14} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-700 transition-colors">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-550 font-bold">Total Outbound Transfers</p>
+                    <p className="text-2xl font-black text-white mt-1">{analytics.total_outgoing}</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <ArrowRightLeft size={14} className="rotate-180" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-700 transition-colors">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-550 font-bold">DSL Brand Stock</p>
+                    <p className="text-2xl font-black text-sky-400 mt-1">{analytics.dsl_stock} units</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 text-[10px] font-black">
+                    DSL
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-700 transition-colors">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-550 font-bold">DSLP Brand Stock</p>
+                    <p className="text-2xl font-black text-purple-400 mt-1">{analytics.dslp_stock} units</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 text-[9px] font-black">
+                    DSLP
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Top Trending Products Bar Chart */}
+              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex flex-col min-h-[350px]">
+                <div className="flex items-center gap-2 mb-6">
+                  <BarChart3 size={16} className="text-emerald-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Top 5 Trending Products</h3>
+                </div>
+                <div className="flex-1 w-full h-[250px]">
+                  {analytics.top_products && analytics.top_products.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={analytics.top_products} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <XAxis dataKey="name" stroke="#71717a" fontSize={9} tickLine={false} />
+                        <YAxis stroke="#71717a" fontSize={9} tickLine={false} />
+                        <Tooltip
+                          cursor={false}
+                          contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px' }}
+                          labelStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
+                          itemStyle={{ color: '#ffffff', fontSize: '11px' }}
+                        />
+                        <Bar 
+                          dataKey="quantity" 
+                          fill="#ffffff" 
+                          activeBar={{ fill: '#d4d4d8' }}
+                          radius={[4, 4, 0, 0]} 
+                          barSize={32} 
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-zinc-550 text-xs font-medium">
+                      No transaction history to compute trends.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* DSL vs DSLP Brand Mix Pie Chart */}
+              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex flex-col min-h-[350px]">
+                <div className="flex items-center gap-2 mb-6">
+                  <PieIcon size={16} className="text-sky-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Inventory Brand Share (DSL vs DSLP)</h3>
+                </div>
+                <div className="flex-1 w-full h-[250px] flex flex-col sm:flex-row items-center justify-center gap-6">
+                  {analytics.dsl_count > 0 || analytics.dslp_count > 0 ? (
+                    <>
+                      <div className="w-full sm:w-1/2 h-[200px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'DSL Products', value: analytics.dsl_count },
+                                { name: 'DSLP Products', value: analytics.dslp_count }
+                              ]}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              <Cell fill="#0ea5e9" />
+                              <Cell fill="#a855f7" />
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px' }}
+                              itemStyle={{ fontSize: '11px' }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="flex flex-col gap-3 text-xs font-semibold w-full sm:w-1/2">
+                        <div className="flex items-center gap-3 p-3 bg-sky-950/10 border border-sky-900/30 rounded-xl">
+                          <div className="w-3 h-3 rounded-full bg-sky-500 shrink-0" />
+                          <div className="flex-1">
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider font-bold">DSL Brand</span>
+                            <span className="text-white text-xs">{analytics.dsl_count} catalog items ({analytics.dsl_stock} stock)</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 p-3 bg-purple-950/10 border border-purple-900/30 rounded-xl">
+                          <div className="w-3 h-3 rounded-full bg-purple-500 shrink-0" />
+                          <div className="flex-1">
+                            <span className="text-zinc-400 block text-[9px] uppercase tracking-wider font-bold">DSLP Brand</span>
+                            <span className="text-white text-xs">{analytics.dslp_count} catalog items ({analytics.dslp_stock} stock)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-zinc-550 text-xs font-medium">
+                      No inventory items categorized.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Movement Flow Area Chart */}
+            <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex flex-col min-h-[350px]">
+              <div className="flex items-center gap-2 mb-6">
+                <ArrowRightLeft size={16} className="text-purple-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Stock Movement Flow (Last 7 Days)</h3>
+              </div>
+              <div className="flex-1 w-full h-[250px]">
+                {analytics.movement_data && analytics.movement_data.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={analytics.movement_data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorIncoming" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorOutgoing" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#18181b" strokeDasharray="3 3" />
+                      <XAxis dataKey="date" stroke="#71717a" fontSize={9} tickLine={false} />
+                      <YAxis stroke="#71717a" fontSize={9} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px' }}
+                        labelStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
+                        itemStyle={{ fontSize: '11px' }}
+                      />
+                      <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }} />
+                      <Area name="Incoming Units (Received)" type="monotone" dataKey="incoming" stroke="#10b981" fillOpacity={1} fill="url(#colorIncoming)" strokeWidth={2} />
+                      <Area name="Outgoing Units (Dispatched)" type="monotone" dataKey="outgoing" stroke="#ef4444" fillOpacity={1} fill="url(#colorOutgoing)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-zinc-550 text-xs font-medium">
+                    No movements logged in the last 7 days.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      ) : (
+        <>
+          {/* Controls: Search, Sort, Filter */}
+          <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-xl">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-550" size={18} />
           <input
@@ -379,6 +692,21 @@ export default function StoreDetailPage() {
                     : 'text-zinc-400 hover:text-white'}`}
               >
                 {mode === 'in' ? 'In Stock' : mode === 'low' ? 'Low Stock' : mode === 'out' ? 'Out of Stock' : 'All'}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-xl">
+            {['all', 'dsl', 'dslp'].map((brandOption) => (
+              <button
+                key={brandOption}
+                onClick={() => setFilterBrand(brandOption)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors uppercase
+                  ${filterBrand === brandOption 
+                    ? 'bg-zinc-800 text-white shadow-md' 
+                    : 'text-zinc-400 hover:text-white'}`}
+              >
+                {brandOption === 'all' ? 'All Brands' : brandOption}
               </button>
             ))}
           </div>
@@ -492,9 +820,22 @@ export default function StoreDetailPage() {
                           >
                             <Package size={16} />
                           </div>
-                          <span className="font-extrabold text-white group-hover:text-emerald-400 transition-colors">
-                            {item.product_name}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-extrabold text-white group-hover:text-emerald-400 transition-colors">
+                              {item.product_name}
+                            </span>
+                            {item.product_brand && (
+                              <div>
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black tracking-wider uppercase border
+                                  ${item.product_brand === 'DSLP' 
+                                    ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                                    : 'bg-sky-500/10 text-sky-400 border-sky-500/20'}`}
+                                >
+                                  {item.product_brand}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -527,13 +868,23 @@ export default function StoreDetailPage() {
                       </td>
                       {hasWriteAccess && (
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => handleOpenAdjust(item)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-750 text-zinc-350 hover:text-white rounded-lg text-xs font-bold transition-all active:scale-[0.96]"
-                          >
-                            <Edit3 size={12} />
-                            Adjust Stock
-                          </button>
+                          <div className="flex justify-end items-center gap-2">
+                            <button
+                              onClick={() => handleOpenAdjust(item)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-750 text-zinc-355 hover:text-white rounded-lg text-xs font-bold transition-all active:scale-[0.96]"
+                            >
+                              <Edit3 size={12} />
+                              Adjust Stock
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProduct(item)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-950/20 hover:bg-red-900 border border-red-500/25 hover:border-red-650 text-red-400 hover:text-white rounded-lg text-xs font-bold transition-all active:scale-[0.96]"
+                              title="Delete Product from Store"
+                            >
+                              <Trash2 size={12} />
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -589,9 +940,19 @@ export default function StoreDetailPage() {
                     {item.product_name}
                   </h3>
                   
-                  <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-zinc-500">
-                    <span>Category:</span>
-                    <span className="text-zinc-400">{item.product_category}</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="px-2 py-0.5 bg-zinc-950 border border-zinc-800 rounded-lg text-[9px] font-bold text-zinc-400 uppercase tracking-wider">
+                      {item.product_category || 'Other'}
+                    </span>
+                    {item.product_brand && (
+                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black tracking-wider uppercase border
+                        ${item.product_brand === 'DSLP' 
+                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
+                          : 'bg-sky-500/10 text-sky-400 border-sky-500/20'}`}
+                      >
+                        {item.product_brand}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -611,13 +972,22 @@ export default function StoreDetailPage() {
                   </div>
 
                   {hasWriteAccess && (
-                    <button
-                      onClick={() => handleOpenAdjust(item)}
-                      className="p-2 bg-zinc-800 hover:bg-emerald-800 text-zinc-400 hover:text-white rounded-lg transition-all active:scale-[0.93] border border-zinc-700/50 hover:border-emerald-600/50 flex items-center justify-center"
-                      title="Adjust Stock"
-                    >
-                      <Edit3 size={15} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenAdjust(item)}
+                        className="p-2 bg-zinc-800 hover:bg-emerald-800 text-zinc-400 hover:text-white rounded-lg transition-all active:scale-[0.93] border border-zinc-700/50 hover:border-emerald-600/50 flex items-center justify-center"
+                        title="Adjust Stock"
+                      >
+                        <Edit3 size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProduct(item)}
+                        className="p-2 bg-zinc-800 hover:bg-red-900 text-zinc-400 hover:text-white rounded-lg transition-all active:scale-[0.93] border border-zinc-700/50 hover:border-red-600/55 flex items-center justify-center"
+                        title="Delete Product from Store"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -625,6 +995,8 @@ export default function StoreDetailPage() {
           })}
         </div>
       )}
+    </>
+  )}
 
       {/* Adjust Stock Level Modal */}
       {adjustItem && (

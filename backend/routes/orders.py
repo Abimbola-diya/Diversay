@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from database import get_db
-from models import User, Order, OrderLineItem, Product, Customer, AuditLog, OrderStatus, ActionType
+from models import User, Order, OrderLineItem, Product, Customer, AuditLog, OrderStatus, ActionType, Store, StoreInventory
 from schemas import OrderCreate, OrderUpdate, OrderStatusUpdate, OrderResponse, OrderDetailResponse, AuditLogResponse, MarkDeliveredRequest
 from auth import get_current_user, check_admin, check_write_access
 from utils import calculate_order_status, calculate_delivery_duration, generate_order_number, get_order_with_details, calculate_hours_overdue
@@ -54,6 +54,9 @@ def get_order_snapshot(order: Order):
         "actual_delivery_time": order.actual_delivery_time.isoformat() if order.actual_delivery_time else None,
         "driver_name": order.driver_name,
         "vehicle_number": order.vehicle_number,
+        "fuel_cost": order.fuel_cost,
+        "waybill_cost": order.waybill_cost,
+        "other_costs": order.other_costs,
         "notes": order.notes,
         "line_items": line_items_snapshot
     }
@@ -75,6 +78,28 @@ def create_order(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Customer not found"
         )
+        
+    if order_create.source_store_id:
+        source_store = db.query(Store).filter(
+            Store.id == order_create.source_store_id,
+            Store.is_deleted == False
+        ).first()
+        if not source_store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Source store not found"
+            )
+            
+    if order_create.destination_store_id:
+        destination_store = db.query(Store).filter(
+            Store.id == order_create.destination_store_id,
+            Store.is_deleted == False
+        ).first()
+        if not destination_store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Destination store not found"
+            )
     
     product_ids = [item.product_id for item in order_create.line_items]
     products = db.query(Product).filter(
@@ -98,11 +123,16 @@ def create_order(
         waybill_number=order_create.waybill_number,
         invoice_number=order_create.invoice_number,
         customer_id=order_create.customer_id,
+        source_store_id=order_create.source_store_id,
+        destination_store_id=order_create.destination_store_id,
         dispatch_time=order_create.dispatch_time,
         expected_delivery_time=order_create.expected_delivery_time,
         notes=order_create.notes,
         driver_name=order_create.driver_name,
         vehicle_number=order_create.vehicle_number,
+        fuel_cost=order_create.fuel_cost or 0.0,
+        waybill_cost=order_create.waybill_cost or 0.0,
+        other_costs=order_create.other_costs or [],
         created_by_id=current_user.id
     )
     
@@ -121,6 +151,36 @@ def create_order(
             unit_price=product.unit_price if product else 0.0
         )
         db.add(line_item)
+        
+        # Debiting stock from source store
+        if order_create.source_store_id:
+            src_inv = db.query(StoreInventory).filter(
+                StoreInventory.store_id == order_create.source_store_id,
+                StoreInventory.product_id == item.product_id
+            ).first()
+            if not src_inv:
+                src_inv = StoreInventory(
+                    store_id=order_create.source_store_id,
+                    product_id=item.product_id,
+                    stock=0.0
+                )
+                db.add(src_inv)
+            src_inv.stock -= item.quantity
+            
+        # Crediting stock to destination store
+        if order_create.destination_store_id:
+            dest_inv = db.query(StoreInventory).filter(
+                StoreInventory.store_id == order_create.destination_store_id,
+                StoreInventory.product_id == item.product_id
+            ).first()
+            if not dest_inv:
+                dest_inv = StoreInventory(
+                    store_id=order_create.destination_store_id,
+                    product_id=item.product_id,
+                    stock=0.0
+                )
+                db.add(dest_inv)
+            dest_inv.stock += item.quantity
     
     db.flush()
     
@@ -161,11 +221,7 @@ def list_orders(
     current_user: User = Depends(get_current_user)
 ):
     """List orders with advanced filtering."""
-    query = db.query(Order).filter(Order.is_deleted == False).options(
-        joinedload(Order.customer),
-        joinedload(Order.created_by_user),
-        joinedload(Order.line_items).joinedload(OrderLineItem.product)
-    )
+    query = db.query(Order).filter(Order.is_deleted == False)
     
     # Apply joins exactly once to prevent duplicate join clauses in SQLAlchemy
     if state or city or customer_name:
@@ -189,28 +245,36 @@ def list_orders(
     
     if order_number:
         search_val = order_number.strip()
-        customer_exists = db.query(Customer.id).filter(
+        
+        # 1. Fetch matching customer IDs in a separate simple query
+        customer_ids = [r[0] for r in db.query(Customer.id).filter(
             or_(
                 Customer.name.ilike(f"%{search_val}%"),
                 Customer.state.ilike(f"%{search_val}%"),
                 Customer.city.ilike(f"%{search_val}%")
             ),
             Customer.is_deleted == False
-        )
-        product_exists = db.query(OrderLineItem.order_id).join(Product).filter(
+        ).all()]
+        
+        # 2. Fetch matching order IDs from product names in a separate simple query
+        order_ids_from_products = [r[0] for r in db.query(OrderLineItem.order_id).join(Product).filter(
             Product.name.ilike(f"%{search_val}%"),
             Product.is_deleted == False
-        )
-        query = query.filter(
-            or_(
-                Order.order_number.ilike(f"%{search_val}%"),
-                Order.waybill_number.ilike(f"%{search_val}%"),
-                Order.invoice_number.ilike(f"%{search_val}%"),
-                Order.driver_name.ilike(f"%{search_val}%"),
-                Order.customer_id.in_(customer_exists),
-                Order.id.in_(product_exists)
-            )
-        )
+        ).all()]
+        
+        # 3. Construct clean filters list
+        filters = [
+            Order.order_number.ilike(f"%{search_val}%"),
+            Order.waybill_number.ilike(f"%{search_val}%"),
+            Order.invoice_number.ilike(f"%{search_val}%"),
+            Order.driver_name.ilike(f"%{search_val}%")
+        ]
+        if customer_ids:
+            filters.append(Order.customer_id.in_(customer_ids))
+        if order_ids_from_products:
+            filters.append(Order.id.in_(order_ids_from_products))
+            
+        query = query.filter(or_(*filters))
     
     if status:
         query = query.filter(Order.order_status == status)
@@ -221,9 +285,21 @@ def list_orders(
     if end_date:
         query = query.filter(Order.dispatch_time <= end_date)
     
-    total = query.count()
+    # Use a lightweight count query (no eager loads) and distinct to prevent duplication
+    from sqlalchemy import func as sqla_func
+    count_query = query.with_entities(sqla_func.count(sqla_func.distinct(Order.id)))
+    total = count_query.scalar()
     
-    orders = query.offset(skip).limit(limit).all()
+    # Eager load relationships on the paginated result query to optimize performance
+    query_fetch = query.options(
+        joinedload(Order.customer),
+        joinedload(Order.created_by_user),
+        joinedload(Order.source_store),
+        joinedload(Order.destination_store),
+        joinedload(Order.line_items).joinedload(OrderLineItem.product)
+    ).distinct()
+    
+    orders = query_fetch.order_by(Order.id.desc()).offset(skip).limit(limit).all()
     
     for order in orders:
         update_order_status(order)
@@ -278,6 +354,8 @@ def get_order_audit_log(
     logs = db.query(AuditLog).filter(
         AuditLog.table_name == "orders",
         AuditLog.record_id == order_id
+    ).options(
+        joinedload(AuditLog.user)
     ).order_by(AuditLog.timestamp.desc()).all()
     
     return [
@@ -341,6 +419,12 @@ def update_order(
         order.driver_name = order_update.driver_name
     if order_update.vehicle_number:
         order.vehicle_number = order_update.vehicle_number
+    if order_update.fuel_cost is not None:
+        order.fuel_cost = order_update.fuel_cost
+    if order_update.waybill_cost is not None:
+        order.waybill_cost = order_update.waybill_cost
+    if order_update.other_costs is not None:
+        order.other_costs = order_update.other_costs
     
     if order_update.line_items is not None:
         db.query(OrderLineItem).filter(OrderLineItem.order_id == order_id).delete()

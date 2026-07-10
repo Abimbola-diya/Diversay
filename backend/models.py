@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float, Enum, Text, Table
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float, Enum, Text, Table, JSON, Index
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -77,6 +77,7 @@ class Product(Base):
     name = Column(String, index=True, nullable=False, unique=True)
     category = Column(Enum(ProductCategory), default=ProductCategory.OTHER)
     default_unit = Column(Enum(UnitType), default=UnitType.CARTON)
+    brand = Column(String, default="DSL", server_default="DSL")
     unit_price = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -92,29 +93,36 @@ class Order(Base):
     waybill_number = Column(String, nullable=True)
     invoice_number = Column(String, nullable=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
-    dispatch_time = Column(DateTime, nullable=True)
+    source_store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)
+    destination_store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)
+    dispatch_time = Column(DateTime, nullable=True, index=True)
     expected_delivery_time = Column(DateTime, nullable=True)
     actual_delivery_time = Column(DateTime, nullable=True)
     delivery_duration = Column(Integer, nullable=True)
     order_status = Column(Enum(OrderStatus), default=OrderStatus.DRAFT)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     notes = Column(Text, nullable=True)
     driver_name = Column(String, nullable=True)
     vehicle_number = Column(String, nullable=True)
-    is_deleted = Column(Boolean, default=False)
+    fuel_cost = Column(Float, default=0.0, nullable=False)
+    waybill_cost = Column(Float, default=0.0, nullable=False)
+    other_costs = Column(JSON, nullable=True, default=[])
+    is_deleted = Column(Boolean, default=False, index=True)
     
     customer = relationship("Customer", back_populates="orders")
     created_by_user = relationship("User", back_populates="created_orders", foreign_keys=[created_by_id])
+    source_store = relationship("Store", foreign_keys=[source_store_id], backref="outgoing_transfers")
+    destination_store = relationship("Store", foreign_keys=[destination_store_id], backref="incoming_transfers")
     line_items = relationship("OrderLineItem", back_populates="order", cascade="all, delete-orphan")
 
 class OrderLineItem(Base):
     __tablename__ = "order_line_items"
     
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     quantity = Column(Float, nullable=False)
     unit = Column(Enum(UnitType), default=UnitType.CARTON)
     unit_price = Column(Float, default=0.0, nullable=False)
@@ -129,8 +137,8 @@ class AuditLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     action = Column(Enum(ActionType), nullable=False)
-    table_name = Column(String, nullable=False)
-    record_id = Column(Integer, nullable=False)
+    table_name = Column(String, nullable=False, index=True)
+    record_id = Column(Integer, nullable=False, index=True)
     details = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
     
@@ -155,8 +163,8 @@ class StoreInventory(Base):
     __tablename__ = "store_inventories"
     
     id = Column(Integer, primary_key=True, index=True)
-    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     stock = Column(Float, default=0.0, nullable=False)
     
     store = relationship("Store", backref="inventories")

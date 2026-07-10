@@ -161,8 +161,23 @@ def get_order_with_details(order: Order) -> dict:
     status = calculate_order_status(order)
     duration = calculate_delivery_duration(order)
     
-    # Calculate total amount
-    total_amount = sum(item.unit_price * item.quantity for item in order.line_items)
+    # Calculate logistics costs
+    fuel_cost = getattr(order, "fuel_cost", 0.0) or 0.0
+    waybill_cost = getattr(order, "waybill_cost", 0.0) or 0.0
+    other_costs = getattr(order, "other_costs", []) or []
+    
+    total_other = 0.0
+    if isinstance(other_costs, list):
+        for o in other_costs:
+            if isinstance(o, dict):
+                try:
+                    total_other += float(o.get("amount", 0.0) or 0.0)
+                except ValueError:
+                    pass
+                    
+    total_amount = float(fuel_cost) + float(waybill_cost) + total_other
+    total_qty = sum(item.quantity for item in order.line_items)
+    avg_logistics_rate = total_amount / total_qty if total_qty > 0 else 0.0
     
     customer_dict = None
     if order.customer:
@@ -199,6 +214,12 @@ def get_order_with_details(order: Order) -> dict:
         "customer_name": order.customer.name if order.customer else None,
         "customer_state": order.customer.state if order.customer else None,
         "customer_address": order.customer.address if order.customer else None,
+        "source_store_id": order.source_store_id,
+        "destination_store_id": order.destination_store_id,
+        "source_store_name": order.source_store.name if order.source_store else None,
+        "destination_store_name": order.destination_store.name if order.destination_store else None,
+        "source_store_is_central": order.source_store.is_central if order.source_store else False,
+        "destination_store_is_central": order.destination_store.is_central if order.destination_store else False,
         "dispatch_time": order.dispatch_time,
         "expected_delivery_time": order.expected_delivery_time,
         "actual_delivery_time": order.actual_delivery_time,
@@ -207,6 +228,9 @@ def get_order_with_details(order: Order) -> dict:
         "notes": order.notes,
         "driver_name": order.driver_name,
         "vehicle_number": order.vehicle_number,
+        "fuel_cost": fuel_cost,
+        "waybill_cost": waybill_cost,
+        "other_costs": other_costs,
         "created_by_id": order.created_by_id,
         "created_by_name": order.created_by_user.full_name if order.created_by_user else None,
         "created_by_user": user_dict,
@@ -221,8 +245,8 @@ def get_order_with_details(order: Order) -> dict:
                 "product_name": item.product.name,
                 "quantity": item.quantity,
                 "unit": item.unit.value,
-                "unit_price": item.unit_price,
-                "total_price": item.unit_price * item.quantity,
+                "unit_price": avg_logistics_rate,
+                "total_price": avg_logistics_rate * item.quantity,
                 "created_at": item.created_at
             }
             for item in order.line_items

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../services/api'
+import api, { getWithCache } from '../services/api'
 import { AlertCircle, Clock, TrendingUp, Activity, ChevronRight, Check } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -45,12 +45,17 @@ export default function DashboardTabs() {
       setLoading(true)
 
       // Fetch orders for notifications and issues
-      const ordersRes = await api.get('/orders?limit=100')
-      const orders = ordersRes.data.items || []
+      const ordersRes = await getWithCache('/orders', { params: { limit: 100 } })
+      const orders = ordersRes.data.items || ordersRes.data || []
 
       // Fetch pending approvals for notifications
-      const approvalsRes = await api.get('/auth/admin/pending-approvals').catch(() => ({ data: { pending_users: [] } }))
-      const pendingUsers = approvalsRes.data.pending_users || []
+      let pendingUsers = []
+      try {
+        const approvalsRes = await getWithCache('/auth/admin/pending-approvals')
+        pendingUsers = approvalsRes.data.pending_users || approvalsRes.data?.pending_users || []
+      } catch (e) {
+        pendingUsers = []
+      }
 
       // Process notifications: Pending approvals + Overdue orders
       const now = new Date()

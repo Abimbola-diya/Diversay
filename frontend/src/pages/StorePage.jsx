@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import api from '../services/api'
+import api, { getWithCache, invalidateCache } from '../services/api'
 import { 
   Store, 
   MapPin, 
@@ -30,9 +30,15 @@ export default function StorePage() {
 
   const fetchStores = async () => {
     try {
-      setLoading(true)
-      const res = await api.get('/stores/')
-      setStores(res.data || [])
+      const isCurrentlyLoading = stores.length === 0
+      if (isCurrentlyLoading) setLoading(true)
+      
+      const { data } = await getWithCache('/stores/', {
+        onCacheUpdate: (newData) => {
+          setStores(newData || [])
+        }
+      })
+      setStores(data || [])
     } catch (err) {
       console.error('Failed to load stores:', err)
     } finally {
@@ -211,6 +217,7 @@ function AddStoreModal({ onClose, onCreated }) {
       setSubmitting(true)
       setError('')
       await api.post('/stores/', form)
+      invalidateCache('/stores/')
       onCreated()
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create store.')

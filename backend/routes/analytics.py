@@ -24,6 +24,8 @@ def get_dashboard_metrics(
     
     all_orders = db.query(Order).filter(Order.is_deleted == False).options(
         joinedload(Order.customer),
+        joinedload(Order.source_store),
+        joinedload(Order.destination_store),
         joinedload(Order.line_items).joinedload(OrderLineItem.product)
     ).all()
     
