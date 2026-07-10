@@ -223,31 +223,39 @@ def list_orders(
     """List orders with advanced filtering."""
     query = db.query(Order).filter(Order.is_deleted == False)
     
-    # Apply joins exactly once to prevent duplicate join clauses in SQLAlchemy
+    # 1. State / City / Customer Name filtering via customer ID pre-fetching
     if state or city or customer_name:
-        query = query.join(Customer)
+        customer_query = db.query(Customer.id).filter(Customer.is_deleted == False)
         if state:
-            query = query.filter(Customer.state.ilike(f"%{state.strip()}%"))
+            customer_query = customer_query.filter(Customer.state.ilike(f"%{state.strip()}%"))
         if city:
-            query = query.filter(Customer.city.ilike(f"%{city.strip()}%"))
+            customer_query = customer_query.filter(Customer.city.ilike(f"%{city.strip()}%"))
         if customer_name:
-            query = query.filter(Customer.name.ilike(f"%{customer_name.strip()}%"))
+            customer_query = customer_query.filter(Customer.name.ilike(f"%{customer_name.strip()}%"))
+        
+        customer_ids = [r[0] for r in customer_query.all()]
+        query = query.filter(Order.customer_id.in_(customer_ids))
 
     if customer_id:
         query = query.filter(Order.customer_id == customer_id)
 
+    # 2. Product ID / Product Name filtering via order ID pre-fetching
     if product_id or product_name:
-        query = query.join(OrderLineItem)
+        product_query = db.query(OrderLineItem.order_id)
         if product_id:
-            query = query.filter(OrderLineItem.product_id == product_id)
+            product_query = product_query.filter(OrderLineItem.product_id == product_id)
         if product_name:
-            query = query.join(Product).filter(Product.name.ilike(f"%{product_name.strip()}%"))
+            product_query = product_query.join(Product).filter(Product.name.ilike(f"%{product_name.strip()}%"))
+        
+        product_order_ids = [r[0] for r in product_query.all()]
+        query = query.filter(Order.id.in_(product_order_ids))
     
+    # 3. Text search (order_number/waybill/invoice/driver/customer_name/product_name) via pre-fetching
     if order_number:
         search_val = order_number.strip()
         
-        # 1. Fetch matching customer IDs in a separate simple query
-        customer_ids = [r[0] for r in db.query(Customer.id).filter(
+        # Fetch matching customer IDs
+        search_customer_ids = [r[0] for r in db.query(Customer.id).filter(
             or_(
                 Customer.name.ilike(f"%{search_val}%"),
                 Customer.state.ilike(f"%{search_val}%"),
@@ -256,21 +264,20 @@ def list_orders(
             Customer.is_deleted == False
         ).all()]
         
-        # 2. Fetch matching order IDs from product names in a separate simple query
+        # Fetch matching order IDs from product names
         order_ids_from_products = [r[0] for r in db.query(OrderLineItem.order_id).join(Product).filter(
             Product.name.ilike(f"%{search_val}%"),
             Product.is_deleted == False
         ).all()]
         
-        # 3. Construct clean filters list
         filters = [
             Order.order_number.ilike(f"%{search_val}%"),
             Order.waybill_number.ilike(f"%{search_val}%"),
             Order.invoice_number.ilike(f"%{search_val}%"),
             Order.driver_name.ilike(f"%{search_val}%")
         ]
-        if customer_ids:
-            filters.append(Order.customer_id.in_(customer_ids))
+        if search_customer_ids:
+            filters.append(Order.customer_id.in_(search_customer_ids))
         if order_ids_from_products:
             filters.append(Order.id.in_(order_ids_from_products))
             
@@ -285,9 +292,9 @@ def list_orders(
     if end_date:
         query = query.filter(Order.dispatch_time <= end_date)
     
-    # Use a lightweight count query (no eager loads) and distinct to prevent duplication
+    # Use a lightweight count query (no joins at all, so simple and fast)
     from sqlalchemy import func as sqla_func
-    count_query = query.with_entities(sqla_func.count(sqla_func.distinct(Order.id)))
+    count_query = query.with_entities(sqla_func.count(Order.id))
     total = count_query.scalar()
     
     # Eager load relationships on the paginated result query to optimize performance
@@ -297,7 +304,7 @@ def list_orders(
         joinedload(Order.source_store),
         joinedload(Order.destination_store),
         joinedload(Order.line_items).joinedload(OrderLineItem.product)
-    ).distinct()
+    )
     
     orders = query_fetch.order_by(Order.id.desc()).offset(skip).limit(limit).all()
     
