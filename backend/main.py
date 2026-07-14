@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .database import engine, Base
-from .routes import auth, customers, products, orders, analytics, stores
-from .config import get_settings
+from database import engine, Base
+from routes import auth, customers, products, orders, analytics, stores
+from config import get_settings
 import logging
 logging.basicConfig(level=logging.INFO)
 
@@ -10,9 +10,9 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 from sqlalchemy import text
-from .database import SessionLocal
-from .models import User, UserRole
-from .auth import hash_password
+from database import SessionLocal
+from models import User, UserRole
+from auth import hash_password
 
 def seed_admin_user():
     db = SessionLocal()
@@ -46,7 +46,7 @@ def seed_admin_user():
                 updated = True
             
             # Verify and update password hash if it doesn't match
-            from .auth import verify_password
+            from auth import verify_password
             if not verify_password("diversaysolutions@2025", admin_user.password_hash):
                 admin_user.password_hash = hash_password("diversaysolutions@2025")
                 updated = True

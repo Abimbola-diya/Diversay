@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..models import User, Customer
-from ..schemas import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerSearchResponse
-from ..auth import get_current_user, check_admin, check_write_access
-from ..utils import fuzzy_search_customers, parse_excel_customers
+from database import get_db
+from models import User, Customer
+from schemas import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerSearchResponse
+from auth import get_current_user, check_admin, check_write_access
+from utils import fuzzy_search_customers, parse_excel_customers
 from typing import List
 
 router = APIRouter(prefix="/customers", tags=["customers"])

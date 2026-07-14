@@ -2,13 +2,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from .config import get_settings
+from config import get_settings
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from fastapi.security.http import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from .models import User, UserRole
-from .database import get_db
+from models import User, UserRole
+from database import get_db
 
 settings = get_settings()
 

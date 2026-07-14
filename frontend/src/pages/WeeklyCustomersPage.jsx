@@ -480,11 +480,11 @@ export default function WeeklyCustomersPage() {
 
             <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 flex items-center justify-between shadow-lg shadow-black/10">
               <div>
-                <span className="text-[10px] font-bold text-zinc-500 tracking-wider uppercase">Gross Load Expense</span>
+                <span className="text-[10px] font-bold text-zinc-500 tracking-wider uppercase">Gross Load Value</span>
                 <h3 className="text-2xl font-black text-white mt-1.5 font-mono">
                   ₦{processedData.totalWeeklyValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </h3>
-                <p className="text-[10px] text-zinc-400 mt-0.5">Estimated total expense</p>
+                <p className="text-[10px] text-zinc-400 mt-0.5">Estimated total revenue</p>
               </div>
               <div className="bg-zinc-950 border border-zinc-800/60 p-3 rounded-xl text-zinc-400">
                 <DollarSign size={22} />
