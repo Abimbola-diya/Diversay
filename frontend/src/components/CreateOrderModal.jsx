@@ -11,7 +11,7 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
   if (filtered.length === 0) return null
 
   return (
-    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-850 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
       <ul className="divide-y divide-zinc-800">
         {filtered.map((product) => (
           <li key={product.id}>
@@ -91,6 +91,38 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [centralStoreId, setCentralStoreId] = useState('')
+  const [storeInventories, setStoreInventories] = useState({})
+
+  const getDepartureStoreId = (order) => {
+    if (order.pipelineType === '2-node') {
+      return order.regionalStoreId
+    } else if (order.pipelineType === '3-node') {
+      return centralStoreId
+    }
+    return ''
+  }
+
+  const getAvailableStock = (order, productId) => {
+    const storeId = getDepartureStoreId(order)
+    if (!storeId || !productId) return null
+    const inventory = storeInventories[storeId]
+    if (!inventory) return null
+    const invItem = inventory.find(i => i.product_id === parseInt(productId))
+    return invItem ? invItem.stock : 0
+  }
+
+  const fetchStoreInventory = async (storeId) => {
+    if (!storeId || storeInventories[storeId]) return
+    try {
+      const res = await getWithCache(`/stores/${storeId}/inventory`)
+      setStoreInventories(prev => ({
+        ...prev,
+        [storeId]: res.data || []
+      }))
+    } catch (err) {
+      console.error(`Failed to fetch inventory for store ${storeId}:`, err)
+    }
+  }
 
   const createInitialOrderObject = (defaultSourceId = '') => ({
     id: Math.random().toString(36).substr(2, 9),
@@ -104,8 +136,6 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     regionalStoreId: '', // selected regional store ID
     sourceStoreId: defaultSourceId,
     destinationStoreId: '',
-    waybillNumber: '',
-    invoiceNumber: '',
     dispatchTime: '',
     expectedDeliveryTime: '',
     deliveryTimeError: '',
@@ -115,10 +145,53 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     waybillCost: '0',
     otherCosts: [],
     notes: '',
+    waybills: [
+      { id: Math.random().toString(36).substr(2, 9), brand: 'DSL', waybillNumber: '', invoiceNumber: '' }
+    ],
     lineItems: [
       { product_id: '', quantity: 1, unit: 'Carton', searchQuery: '' }
     ]
   })
+
+  const addWaybill = (orderId) => {
+    setBatchOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        const defaultBrand = o.waybills.some(w => w.brand === 'DSL') ? 'DSLP' : 'DSL'
+        return {
+          ...o,
+          waybills: [
+            ...o.waybills,
+            { id: Math.random().toString(36).substr(2, 9), brand: defaultBrand, waybillNumber: '', invoiceNumber: '' }
+          ]
+        }
+      }
+      return o
+    }))
+  }
+
+  const removeWaybill = (orderId, waybillId) => {
+    setBatchOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          waybills: o.waybills.filter(w => w.id !== waybillId)
+        }
+      }
+      return o
+    }))
+  }
+
+  const updateWaybill = (orderId, waybillId, field, value) => {
+    setBatchOrders(prev => prev.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          waybills: o.waybills.map(w => w.id === waybillId ? { ...w, [field]: value } : w)
+        }
+      }
+      return o
+    }))
+  }
 
   // Batch Form State
   const [batchOrders, setBatchOrders] = useState([createInitialOrderObject()])
@@ -158,6 +231,22 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       fetchFormData()
     }
   }, [isOpen])
+
+  // Automatically fetch store inventories for active departure stores
+  useEffect(() => {
+    if (!isOpen) return
+    const departureStoreIds = new Set()
+    batchOrders.forEach(order => {
+      const storeId = getDepartureStoreId(order)
+      if (storeId) {
+        departureStoreIds.add(storeId.toString())
+      }
+    })
+    
+    departureStoreIds.forEach(storeId => {
+      fetchStoreInventory(storeId)
+    })
+  }, [batchOrders, centralStoreId, isOpen])
 
   const fetchFormData = async () => {
     try {
@@ -238,6 +327,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         fuelCost: sourceOrder.fuelCost,
         waybillCost: sourceOrder.waybillCost,
         otherCosts: sourceOrder.otherCosts.map(c => ({ ...c, id: Math.random().toString(36).substr(2, 9) })),
+        waybills: sourceOrder.waybills.map(w => ({ ...w, id: Math.random().toString(36).substr(2, 9) })),
         deliveryTimeError: ''
       }
     }))
@@ -374,6 +464,19 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         setError(`Please resolve delivery time issue for ${orderLabel}: ${order.deliveryTimeError}`)
         return
       }
+
+      // Validate waybill and invoice fields
+      if (!order.waybills || order.waybills.length === 0) {
+        setError(`Please add at least one waybill and invoice reference for ${orderLabel}.`)
+        return
+      }
+      for (let w = 0; w < order.waybills.length; w++) {
+        const wb = order.waybills[w]
+        if (!wb.waybillNumber.trim() || !wb.invoiceNumber.trim()) {
+          setError(`Please fill in both the waybill and invoice numbers for card #${w + 1} in ${orderLabel}.`)
+          return
+        }
+      }
       
       // Validate line items
       const invalidItem = order.lineItems.find(item => !item.product_id || item.quantity <= 0)
@@ -381,41 +484,100 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         setError(`Please select a product and valid quantity for all line items in ${orderLabel}.`)
         return
       }
+
+      // Validate available stock levels
+      for (let j = 0; j < order.lineItems.length; j++) {
+        const item = order.lineItems[j]
+        const stock = getAvailableStock(order, item.product_id)
+        if (stock !== null && parseFloat(item.quantity || 0) > stock) {
+          const prodName = products.find(p => p.id === parseInt(item.product_id))?.name || 'product'
+          const storeName = stores.find(s => s.id.toString() === getDepartureStoreId(order))?.name || 'selected store'
+          setError(`Requested quantity for "${prodName}" (${item.quantity}) exceeds available stock in ${storeName} (${stock} remaining).`)
+          return
+        }
+      }
     }
 
     try {
       setSubmitting(true)
       setError(null)
 
-      // Send all POST requests concurrently
-      const requests = batchOrders.map(order => {
-        const payload = {
-          customer_id: parseInt(order.customerId),
-          source_store_id: order.sourceStoreId ? parseInt(order.sourceStoreId) : null,
-          destination_store_id: order.destinationStoreId ? parseInt(order.destinationStoreId) : null,
-          waybill_number: order.waybillNumber || null,
-          invoice_number: order.invoiceNumber || null,
-          dispatch_time: new Date(order.dispatchTime).toISOString(),
-          expected_delivery_time: new Date(order.expectedDeliveryTime).toISOString(),
-          driver_name: order.driverName || null,
-          vehicle_number: order.vehicleNumber || null,
-          fuel_cost: parseFloat(order.fuelCost || 0),
-          waybill_cost: parseFloat(order.waybillCost || 0),
-          other_costs: order.otherCosts.map(c => ({ name: c.name, amount: parseFloat(c.amount || 0) })),
-          notes: order.notes || null,
-          line_items: order.lineItems.map(item => ({
-            product_id: parseInt(item.product_id),
-            quantity: parseFloat(item.quantity),
-            unit: item.unit
-          }))
+      const payloads = []
+
+      for (let i = 0; i < batchOrders.length; i++) {
+        const order = batchOrders[i]
+        const orderLabel = batchOrders.length > 1 ? `Order #${i + 1}` : 'The order'
+
+        // Resolve brand for each line item
+        const itemsWithBrand = order.lineItems.map(item => {
+          const prod = products.find(p => p.id === parseInt(item.product_id))
+          const brand = prod ? (prod.brand || 'DSL').toUpperCase() : 'DSL'
+          return { ...item, brand }
+        })
+
+        // Validate unpaired products when multiple waybills are present
+        if (order.waybills.length > 1) {
+          const unpaired = itemsWithBrand.filter(item => 
+            !order.waybills.some(wb => wb.brand.toUpperCase() === item.brand)
+          )
+          if (unpaired.length > 0) {
+            const firstUnpairedProdName = products.find(p => p.id === parseInt(unpaired[0].product_id))?.name || 'product'
+            setError(`Please add a waybill/invoice reference card for brand "${unpaired[0].brand}" in ${orderLabel} to pair with product "${firstUnpairedProdName}".`)
+            setSubmitting(false)
+            return
+          }
         }
-        return api.post('/orders', payload)
-      })
+
+        // Construct payload(s) for each waybill reference card
+        for (let w = 0; w < order.waybills.length; w++) {
+          const wb = order.waybills[w]
+          const fullWb = (wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/') + wb.waybillNumber.trim()
+          const fullInv = (wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/') + wb.invoiceNumber.trim()
+
+          let matchedItems = []
+          if (order.waybills.length === 1) {
+            matchedItems = itemsWithBrand
+          } else {
+            matchedItems = itemsWithBrand.filter(item => item.brand === wb.brand.toUpperCase())
+          }
+
+          if (matchedItems.length === 0) {
+            setError(`Please add at least one "${wb.brand}" product to pair with waybill reference "${fullWb}" in ${orderLabel}, or remove the extra reference card.`)
+            setSubmitting(false)
+            return
+          }
+
+          payloads.push({
+            customer_id: parseInt(order.customerId),
+            source_store_id: order.sourceStoreId ? parseInt(order.sourceStoreId) : null,
+            destination_store_id: order.destinationStoreId ? parseInt(order.destinationStoreId) : null,
+            waybill_number: fullWb,
+            invoice_number: fullInv,
+            dispatch_time: new Date(order.dispatchTime).toISOString(),
+            expected_delivery_time: new Date(order.expectedDeliveryTime).toISOString(),
+            driver_name: order.driverName || null,
+            vehicle_number: order.vehicleNumber || null,
+            fuel_cost: parseFloat(order.fuelCost || 0),
+            waybill_cost: parseFloat(order.waybillCost || 0),
+            other_costs: order.otherCosts.map(c => ({ name: c.name, amount: parseFloat(c.amount || 0) })),
+            notes: order.notes || null,
+            line_items: matchedItems.map(item => ({
+              product_id: parseInt(item.product_id),
+              quantity: parseFloat(item.quantity),
+              unit: item.unit
+            }))
+          })
+        }
+      }
+
+      // Send all POST requests concurrently
+      const requests = payloads.map(payload => api.post('/orders', payload))
 
       // Reset form & close modal immediately for optimistic instantaneous UI response
       const centralStore = stores.find(s => s.is_central)
       const centralStoreId = centralStore ? centralStore.id.toString() : ''
       setBatchOrders([createInitialOrderObject(centralStoreId)])
+      setStoreInventories({})
       onClose()
 
       // Await requests in the background
@@ -461,7 +623,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-zinc-850 rounded-lg text-zinc-400 hover:text-white transition-colors"
+            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors"
           >
             <X size={20} />
           </button>
@@ -496,7 +658,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     <button
                       type="button"
                       onClick={() => handleRemoveOrder(order.id)}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-zinc-500 hover:text-red-400 px-2 py-1 rounded bg-zinc-800/30 hover:bg-red-500/10 border border-zinc-850 transition-all"
+                      className="flex items-center gap-1 text-[11px] font-semibold text-zinc-500 hover:text-red-400 px-2 py-1 rounded bg-zinc-800/30 hover:bg-red-500/10 border border-zinc-800 transition-all"
                       title="Remove Order from Batch"
                     >
                       <Trash2 size={13} />
@@ -512,7 +674,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                       <User size={14} /> Customer Information
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                       <div className="relative customer-search-container w-full">
                         <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
                           Customer <span className="text-red-500">*</span>
@@ -530,7 +692,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                         />
                         
                         {order.showCustomerDropdown && order.matchingCustomers.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-850 border border-zinc-700/80 rounded-xl shadow-xl z-50 overflow-hidden backdrop-blur-md">
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 overflow-hidden backdrop-blur-md">
                             <ul className="divide-y divide-zinc-800">
                               {order.matchingCustomers.map((c) => (
                                 <li key={c.id}>
@@ -548,37 +710,109 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                           </div>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">Waybill #</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. WB-929"
-                            value={order.waybillNumber}
-                            onChange={(e) => {
-                              setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, waybillNumber: e.target.value } : o))
-                            }}
-                            className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">Invoice #</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. INV-102"
-                            value={order.invoiceNumber}
-                            onChange={(e) => {
-                              setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, invoiceNumber: e.target.value } : o))
-                            }}
-                            className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors text-sm"
-                          />
-                        </div>
+                    </div>
+
+                    {/* Waybills & Invoices List */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <FileText size={13} /> Waybill & Invoice Reference(s) <span className="text-red-500">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => addWaybill(order.id)}
+                          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-extrabold bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
+                        >
+                          <Plus size={11} /> Add Reference
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        {order.waybills.map((wb, cardIdx) => (
+                          <div key={wb.id} className="bg-zinc-950/45 p-4 rounded-2xl border border-zinc-800 space-y-3 relative animate-in fade-in slide-in-from-top-1 duration-150">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] uppercase tracking-wider font-extrabold text-zinc-550">
+                                Reference Card #{cardIdx + 1}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-zinc-500 uppercase">Brand:</span>
+                                <div className="flex rounded-lg bg-zinc-900 p-0.5 border border-zinc-800">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateWaybill(order.id, wb.id, 'brand', 'DSL')}
+                                    className={`px-2 py-0.5 text-[9px] font-extrabold rounded-md uppercase tracking-wider transition-all ${
+                                      wb.brand === 'DSL' 
+                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm' 
+                                        : 'text-zinc-500 hover:text-zinc-300'
+                                    }`}
+                                  >
+                                    DSL
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => updateWaybill(order.id, wb.id, 'brand', 'DSLP')}
+                                    className={`px-2 py-0.5 text-[9px] font-extrabold rounded-md uppercase tracking-wider transition-all ${
+                                      wb.brand === 'DSLP' 
+                                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-sm' 
+                                        : 'text-zinc-500 hover:text-zinc-300'
+                                    }`}
+                                  >
+                                    DSLP
+                                  </button>
+                                </div>
+                                {order.waybills.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeWaybill(order.id, wb.id)}
+                                    className="p-1 hover:bg-red-500/10 text-zinc-500 hover:text-red-400 rounded-md transition-colors ml-1"
+                                    title="Remove Reference"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Waybill Number</label>
+                                <div className="flex rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/60 focus-within:border-zinc-600 transition-colors">
+                                  <span className="bg-zinc-900/60 px-3 py-2 text-zinc-400 text-xs font-semibold select-none border-r border-zinc-800 flex items-center min-w-[76px] justify-center">
+                                    {wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/'}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. 1002"
+                                    required
+                                    value={wb.waybillNumber}
+                                    onChange={(e) => updateWaybill(order.id, wb.id, 'waybillNumber', e.target.value)}
+                                    className="w-full px-3 py-2 bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none text-xs"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Invoice Number</label>
+                                <div className="flex rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/60 focus-within:border-zinc-600 transition-colors">
+                                  <span className="bg-zinc-900/60 px-3 py-2 text-zinc-400 text-xs font-semibold select-none border-r border-zinc-800 flex items-center min-w-[76px] justify-center">
+                                    {wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/'}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. 5003"
+                                    required
+                                    value={wb.invoiceNumber}
+                                    onChange={(e) => updateWaybill(order.id, wb.id, 'invoiceNumber', e.target.value)}
+                                    className="w-full px-3 py-2 bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none text-xs"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
 
                   {/* Step 1.5: Fulfillment Route Pipeline */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-850">
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
                     <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                       <Truck size={14} /> Fulfillment Route Pipeline
                     </h4>
@@ -617,7 +851,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                             onClick={() => handleRoutingChange(order.id, { pipelineType: '2-node' })}
                             className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
                               order.pipelineType === '2-node'
-                                ? 'bg-zinc-850 text-emerald-400 shadow-md border border-zinc-700/50'
+                                ? 'bg-zinc-800 text-emerald-400 shadow-md border border-zinc-700/50'
                                 : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                           >
@@ -628,7 +862,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                             onClick={() => handleRoutingChange(order.id, { pipelineType: '3-node' })}
                             className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
                               order.pipelineType === '3-node'
-                                ? 'bg-zinc-850 text-emerald-400 shadow-md border border-zinc-700/50'
+                                ? 'bg-zinc-800 text-emerald-400 shadow-md border border-zinc-700/50'
                                 : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                           >
@@ -639,7 +873,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     </div>
 
                     {/* Visual Routing Pipeline diagram */}
-                    <div className="bg-zinc-950/40 border border-zinc-850/60 rounded-xl p-4 mt-3 flex flex-col items-center justify-center space-y-3 min-h-[90px] overflow-hidden">
+                    <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 mt-3 flex flex-col items-center justify-center space-y-3 min-h-[90px] overflow-hidden">
                       <span className="text-[9px] uppercase tracking-widest text-zinc-550 font-bold">Route Path Preview</span>
                       
                       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm font-semibold w-full">
@@ -696,7 +930,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                   </div>
 
                   {/* Step 2: Schedule & Delivery */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-850">
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                         <Calendar size={14} /> Schedule & Logistics
@@ -705,7 +939,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                         <button
                           type="button"
                           onClick={() => handleCopyLogistics(order)}
-                          className="text-[10px] font-bold text-zinc-400 hover:text-white bg-zinc-855 hover:bg-zinc-800 px-2.5 py-1 rounded-lg border border-zinc-800 transition-colors"
+                          className="text-[10px] font-bold text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 rounded-lg border border-zinc-800 transition-colors"
                           title="Copy this card's dispatch/driver info to all other cards"
                         >
                           Copy Logistics to All
@@ -794,86 +1028,99 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                   </div>
 
                   {/* Step 3: Line Items */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-850">
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                         <Package size={14} /> Products & Line Items <span className="text-red-500">*</span>
                       </h4>
-                      <button
-                        type="button"
-                        onClick={() => handleAddLineItem(order.id)}
-                        className="flex items-center gap-1.5 px-3 py-1 bg-zinc-805 hover:bg-zinc-800 text-white hover:text-zinc-200 text-xs font-semibold rounded-lg border border-zinc-800 transition-colors"
-                      >
-                        <Plus size={14} /> Add Product
-                      </button>
                     </div>
 
                     <div className="space-y-3">
-                      {order.lineItems.map((item, itemIdx) => (
-                        <div 
-                          key={itemIdx} 
-                          className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/20 p-3 rounded-xl border border-zinc-800"
-                        >
-                          <div className="flex-1 w-full relative product-search-container">
-                            <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Product</label>
-                            <input
-                              type="text"
-                              placeholder="Type product name..."
-                              required
-                              value={item.searchQuery || ''}
-                              onFocus={() => {
-                                setActiveProductSearch({ orderId: order.id, itemIdx })
-                                if (!item.searchQuery && item.product_id) {
-                                  const prod = products.find(p => p.id === parseInt(item.product_id))
-                                  if (prod) {
-                                    handleLineItemChange(order.id, itemIdx, 'searchQuery', prod.name)
+                      {order.lineItems.map((item, itemIdx) => {
+                        const departureStoreId = getDepartureStoreId(order)
+                        const availableStock = item.product_id ? getAvailableStock(order, item.product_id) : null
+                        const isExceeded = availableStock !== null && parseFloat(item.quantity || 0) > availableStock
+
+                        return (
+                          <div 
+                            key={itemIdx} 
+                            className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/20 p-3 rounded-xl border border-zinc-800"
+                          >
+                            <div className="flex-1 w-full relative product-search-container">
+                              <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Product</label>
+                              <input
+                                type="text"
+                                placeholder="Type product name..."
+                                required
+                                value={item.searchQuery || ''}
+                                onFocus={() => {
+                                  setActiveProductSearch({ orderId: order.id, itemIdx })
+                                  if (!item.searchQuery && item.product_id) {
+                                    const prod = products.find(p => p.id === parseInt(item.product_id))
+                                    if (prod) {
+                                      handleLineItemChange(order.id, itemIdx, 'searchQuery', prod.name)
+                                    }
                                   }
-                                }
-                              }}
-                              onChange={(e) => handleLineItemChange(order.id, itemIdx, 'searchQuery', e.target.value)}
-                              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white transition-colors text-sm"
-                            />
-                            
-                            {activeProductSearch?.orderId === order.id && activeProductSearch?.itemIdx === itemIdx && (
-                              <ProductSearchDropdown
-                                query={item.searchQuery || ''}
-                                products={products}
-                                onSelect={(product) => {
-                                  handleLineItemChange(order.id, itemIdx, 'product_id', product.id.toString())
-                                  handleLineItemChange(order.id, itemIdx, 'searchQuery', product.name)
-                                  setActiveProductSearch(null)
                                 }}
+                                onChange={(e) => handleLineItemChange(order.id, itemIdx, 'searchQuery', e.target.value)}
+                                className={`w-full pl-3 ${item.product_id ? 'pr-24' : 'pr-3'} py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white transition-colors text-sm`}
                               />
-                            )}
-                          </div>
 
-                          <div className="w-full md:w-32">
-                            <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Quantity</label>
-                            <input
-                              type="number"
-                              required
-                              min="1"
-                              step="any"
-                              placeholder="Qty"
-                              value={item.quantity}
-                              onChange={(e) => handleLineItemChange(order.id, itemIdx, 'quantity', e.target.value)}
-                              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
-                            />
-                          </div>
+                              {item.product_id && (
+                                <div className="absolute right-2.5 top-[29px] md:top-[9px] flex items-center gap-1 text-[9px] font-bold text-zinc-400 bg-zinc-900/90 px-2 py-0.5 rounded border border-zinc-800 pointer-events-none select-none">
+                                  Stock: <span className={!departureStoreId ? "text-zinc-500" : (availableStock > 0 ? "text-emerald-400" : "text-red-400")}>
+                                    {!departureStoreId ? "Select Store" : (availableStock ?? '...')}
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {activeProductSearch?.orderId === order.id && activeProductSearch?.itemIdx === itemIdx && (
+                                <ProductSearchDropdown
+                                  query={item.searchQuery || ''}
+                                  products={products}
+                                  onSelect={(product) => {
+                                    handleLineItemChange(order.id, itemIdx, 'product_id', product.id.toString())
+                                    handleLineItemChange(order.id, itemIdx, 'searchQuery', product.name)
+                                    setActiveProductSearch(null)
+                                  }}
+                                />
+                              )}
+                            </div>
 
-                          <div className="w-full md:w-36">
-                            <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Unit</label>
-                            <select
-                              value={item.unit}
-                              onChange={(e) => handleLineItemChange(order.id, itemIdx, 'unit', e.target.value)}
-                              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
-                            >
-                              <option value="Carton">Carton</option>
-                              <option value="Keg">Keg</option>
-                              <option value="Bag">Bag</option>
-                              <option value="Sachet">Sachet</option>
-                            </select>
-                          </div>
+                            <div className="w-full md:w-32 relative">
+                              <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Quantity</label>
+                              <input
+                                type="number"
+                                required
+                                min="1"
+                                step="any"
+                                placeholder="Qty"
+                                value={item.quantity}
+                                onChange={(e) => handleLineItemChange(order.id, itemIdx, 'quantity', e.target.value)}
+                                className={`w-full px-3 py-2 bg-zinc-800 border rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm ${
+                                  isExceeded ? 'border-red-500 focus:border-red-500 text-red-400' : 'border-zinc-700'
+                                }`}
+                              />
+                              {isExceeded && (
+                                <span className="absolute left-0 top-full text-[9px] text-red-400 font-bold block mt-0.5 whitespace-nowrap bg-zinc-950/90 px-1 py-0.5 rounded border border-red-500/20 z-10">
+                                  Max {availableStock} available
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="w-full md:w-36">
+                              <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Unit</label>
+                              <select
+                                value={item.unit}
+                                onChange={(e) => handleLineItemChange(order.id, itemIdx, 'unit', e.target.value)}
+                                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
+                              >
+                                <option value="Carton">Carton</option>
+                                <option value="Keg">Keg</option>
+                                <option value="Bag">Bag</option>
+                                <option value="Pieces">Pieces</option>
+                              </select>
+                            </div>
 
                           <button
                             type="button"
@@ -885,12 +1132,23 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                             <Trash2 size={16} />
                           </button>
                         </div>
-                      ))}
+                      )
+                    })}
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleAddLineItem(order.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-805 hover:bg-zinc-800 text-white hover:text-zinc-200 text-xs font-semibold rounded-lg border border-zinc-800 transition-colors"
+                      >
+                        <Plus size={14} /> Add Product
+                      </button>
                     </div>
                   </div>
 
                   {/* Step 3.5: Logistics Costs */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-850">
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                         <span className="text-zinc-550 font-bold">$</span> Logistics Costs
@@ -1013,7 +1271,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                   </div>
 
                   {/* Step 4: Notes */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-850">
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
                     <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                       <FileText size={14} /> Additional Notes
                     </h4>

@@ -24,7 +24,7 @@ class UnitType(str, enum.Enum):
     CARTON = "Carton"
     KEG = "Keg"
     BAG = "Bag"
-    SACHET = "Sachet"
+    PIECES = "Pieces"
     PCS = "Pcs"
     DRUM = "Drum"
     BOTTLE = "Bottle"

@@ -30,7 +30,7 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
   if (filtered.length === 0) return null
 
   return (
-    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-850 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
       <ul className="divide-y divide-zinc-800">
         {filtered.map((product) => (
           <li key={product.id}>
@@ -850,7 +850,7 @@ export default function OrderDetailPage() {
                     type="text"
                     value={editWaybill}
                     onChange={(e) => setEditWaybill(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-850 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
                 <div>
@@ -859,7 +859,7 @@ export default function OrderDetailPage() {
                     type="text"
                     value={editInvoice}
                     onChange={(e) => setEditInvoice(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-855 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
                 <div>
@@ -868,7 +868,7 @@ export default function OrderDetailPage() {
                     type="text"
                     value={editDriver}
                     onChange={(e) => setEditDriver(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-850 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
                 <div>
@@ -877,7 +877,7 @@ export default function OrderDetailPage() {
                     type="text"
                     value={editVehicle}
                     onChange={(e) => setEditVehicle(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-855 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
                 <div>
@@ -886,7 +886,7 @@ export default function OrderDetailPage() {
                     type="datetime-local"
                     value={editDispatchTime}
                     onChange={(e) => setEditDispatchTime(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-850 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
                 <div>
@@ -895,7 +895,7 @@ export default function OrderDetailPage() {
                     type="datetime-local"
                     value={editExpectedDelivery}
                     onChange={(e) => setEditExpectedDelivery(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-855 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
                 <div className="md:col-span-2">
@@ -904,16 +904,16 @@ export default function OrderDetailPage() {
                     type="datetime-local"
                     value={editActualDelivery}
                     onChange={(e) => setEditActualDelivery(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-850 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-450 mb-1">Transit Manifest Notes</label>
+                  <label className="block text-xs font-semibold text-zinc-455 mb-1">Transit Manifest Notes</label>
                   <textarea
                     rows="3"
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-850 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
               </div>
@@ -982,7 +982,7 @@ export default function OrderDetailPage() {
             )}
 
             {!isEditing && displayOrder.notes && (
-              <div className="mt-6 pt-6 border-t border-zinc-850">
+              <div className="mt-6 pt-6 border-t border-zinc-800">
                 <span className="text-xs text-zinc-300 font-medium block mb-2">Transit Manifest Notes</span>
                 <div className={`bg-zinc-950/40 border rounded-xl p-3 text-xs leading-relaxed font-sans ${isFieldDifferent('notes', displayOrder.notes) ? 'text-yellow-500 font-semibold border-yellow-500/20' : 'text-zinc-300 border-zinc-800/60'}`}>
                   {displayOrder.notes}
@@ -1003,7 +1003,7 @@ export default function OrderDetailPage() {
                 <button
                   type="button"
                   onClick={handleAddLineItem}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-850 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-bold rounded-lg border border-zinc-800 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-bold rounded-lg border border-zinc-800 transition-colors"
                 >
                   <Plus size={12} /> Add Product Item
                 </button>
@@ -1087,7 +1087,7 @@ export default function OrderDetailPage() {
                         <option value="Carton">Carton</option>
                         <option value="Keg">Keg</option>
                         <option value="Bag">Bag</option>
-                        <option value="Sachet">Sachet</option>
+                        <option value="Pieces">Pieces</option>
                       </select>
                     </div>
 
@@ -1155,7 +1155,7 @@ export default function OrderDetailPage() {
                   {editOtherCosts.length > 0 && (
                     <div className="space-y-2 pt-2">
                       {editOtherCosts.map((cost, costIdx) => (
-                        <div key={cost.id} className="flex gap-2 items-center bg-zinc-950/20 p-2.5 rounded-xl border border-zinc-850">
+                        <div key={cost.id} className="flex gap-2 items-center bg-zinc-950/20 p-2.5 rounded-xl border border-zinc-800">
                           <input
                             type="text"
                             placeholder="Cost Name (e.g. Loading Fee)"
@@ -1199,7 +1199,7 @@ export default function OrderDetailPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-zinc-850 bg-zinc-950/30">
+                    <tr className="border-b border-zinc-800 bg-zinc-950/30">
                       <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400">Product Specification</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400">Unit Type</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-zinc-400">Quantity</th>
@@ -1207,11 +1207,11 @@ export default function OrderDetailPage() {
                       <th className="px-4 py-3 text-center text-xs font-semibold text-zinc-400">Line Subtotal</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-850">
+                  <tbody className="divide-y divide-zinc-800">
                     {displayOrder.line_items.map((item, idx) => {
                       const isItemDiff = isLineItemDifferent(item)
                       return (
-                        <tr key={idx} className="hover:bg-zinc-850/10 transition-colors">
+                        <tr key={idx} className="hover:bg-zinc-800/10 transition-colors">
                           <td className={`px-4 py-4 text-sm font-bold ${isItemDiff ? 'text-yellow-500' : 'text-white'}`}>
                             <div className="flex items-center gap-2">
                               <span>{item.product_name}</span>
@@ -1241,7 +1241,7 @@ export default function OrderDetailPage() {
 
             {/* Logistics Cost Breakdown Panel */}
             {!isEditing && (
-              <div className="mt-6 p-4 rounded-xl bg-zinc-950/40 border border-zinc-850/60 space-y-3">
+              <div className="mt-6 p-4 rounded-xl bg-zinc-950/40 border border-zinc-800 space-y-3">
                 <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Logistics Expenses Breakdown</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
                   <div className="space-y-2">
@@ -1285,7 +1285,7 @@ export default function OrderDetailPage() {
             )}
 
             {/* Total Section */}
-            <div className="mt-6 pt-6 border-t border-zinc-800 flex justify-between items-center bg-zinc-950/40 p-4 rounded-xl border border-zinc-850">
+            <div className="mt-6 pt-6 border-t border-zinc-800 flex justify-between items-center bg-zinc-950/40 p-4 rounded-xl border border-zinc-800">
               <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 {isEditing ? 'Estimated Total Logistics Cost' : 'Total Logistics Cost'}
               </span>

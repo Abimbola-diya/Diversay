@@ -1330,7 +1330,7 @@ export default function StoreDetailPage() {
                           <option value="Carton">Carton</option>
                           <option value="Keg">Keg</option>
                           <option value="Bag">Bag</option>
-                          <option value="Sachet">Sachet</option>
+                          <option value="Pieces">Pieces</option>
                           <option value="Pcs">Pcs</option>
                           <option value="Drum">Drum</option>
                           <option value="Bottle">Bottle</option>
