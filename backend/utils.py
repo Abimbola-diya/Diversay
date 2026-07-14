@@ -243,6 +243,7 @@ def get_order_with_details(order: Order) -> dict:
                 "id": item.id,
                 "product_id": item.product_id,
                 "product_name": item.product.name,
+                "product_brand": item.product.brand,
                 "quantity": item.quantity,
                 "unit": item.unit.value,
                 "unit_price": avg_logistics_rate,

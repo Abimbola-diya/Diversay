@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
-from models import User, Order, OrderLineItem, Customer, OrderStatus
-from schemas import DashboardMetrics, StatusBreakdown, StateMetrics, OrderMetrics
+from models import User, Order, OrderLineItem, Customer, OrderStatus, AuditLog, NotificationAcknowledgment
+from schemas import DashboardMetrics, StatusBreakdown, StateMetrics, OrderMetrics, AuditLogResponse, AcknowledgeRequest
 from auth import get_current_user, check_admin
 from utils import calculate_order_status, calculate_hours_overdue
 from datetime import datetime, timedelta
@@ -128,3 +128,64 @@ def get_dashboard_metrics(
         "total_orders_30_days": total_orders_30_days,
         "orders_growth_percentage": round(orders_growth_percentage, 2)
     }
+
+
+@router.get("/audit-logs", response_model=List[AuditLogResponse])
+def get_audit_logs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get system-wide recent audit logs."""
+    logs = db.query(AuditLog).options(
+        joinedload(AuditLog.user)
+    ).order_by(AuditLog.timestamp.desc()).limit(100).all()
+    
+    return [
+        {
+            "id": log.id,
+            "user_id": log.user_id,
+            "user_name": log.user.full_name if log.user else None,
+            "action": log.action.value,
+            "table_name": log.table_name,
+            "record_id": log.record_id,
+            "details": log.details,
+            "timestamp": log.timestamp
+        }
+        for log in logs
+    ]
+
+
+@router.get("/acknowledged", response_model=List[str])
+def get_acknowledged_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get list of acknowledged notification/activity IDs for current user."""
+    acks = db.query(NotificationAcknowledgment).filter(
+        NotificationAcknowledgment.user_id == current_user.id
+    ).all()
+    return [ack.notification_id for ack in acks]
+
+
+@router.post("/acknowledge")
+def acknowledge_notification(
+    req: AcknowledgeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Acknowledge a notification/activity by ID."""
+    existing = db.query(NotificationAcknowledgment).filter(
+        NotificationAcknowledgment.user_id == current_user.id,
+        NotificationAcknowledgment.notification_id == req.notification_id
+    ).first()
+    
+    if not existing:
+        ack = NotificationAcknowledgment(
+            user_id=current_user.id,
+            notification_id=req.notification_id
+        )
+        db.add(ack)
+        db.commit()
+    
+    return {"status": "success"}
+

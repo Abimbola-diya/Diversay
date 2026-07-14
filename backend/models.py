@@ -169,3 +169,13 @@ class StoreInventory(Base):
     
     store = relationship("Store", backref="inventories")
     product = relationship("Product", backref="store_inventories")
+
+class NotificationAcknowledgment(Base):
+    __tablename__ = "notification_acknowledgments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    notification_id = Column(String, nullable=False, index=True)
+    acknowledged_at = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User", backref="notification_acknowledgments")

@@ -34,9 +34,11 @@ def get_order_snapshot(order: Order):
     line_items_snapshot = []
     for item in order.line_items:
         prod_name = item.product.name if item.product else "Unknown Product"
+        prod_brand = item.product.brand if item.product else None
         line_items_snapshot.append({
             "product_id": item.product_id,
             "product_name": prod_name,
+            "product_brand": prod_brand,
             "quantity": item.quantity,
             "unit": item.unit.value if hasattr(item.unit, 'value') else str(item.unit),
             "unit_price": item.unit_price

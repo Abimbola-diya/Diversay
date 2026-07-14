@@ -20,7 +20,18 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
               onClick={() => onSelect(product)}
               className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700/55 transition-colors flex justify-between items-center"
             >
-              <span className="font-medium text-zinc-100">{product.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-zinc-100">{product.name}</span>
+                {product.brand && (
+                  <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                    product.brand.toUpperCase() === 'DSLP'
+                      ? 'bg-purple-500/25 text-purple-400 border border-purple-500/35'
+                      : 'bg-sky-500/25 text-sky-400 border border-sky-500/35'
+                  }`}>
+                    {product.brand}
+                  </span>
+                )}
+              </div>
               {product.category && (
                 <span className="text-[10px] text-zinc-400 font-semibold px-2 py-0.5 bg-zinc-800 rounded uppercase tracking-wider">
                   {product.category}
@@ -153,7 +164,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       setLoading(true)
       setError(null)
       const [productsRes, customersRes, storesRes] = await Promise.all([
-        getWithCache('/products', { params: { limit: 100 } }),
+        getWithCache('/products', { params: { limit: 1000 } }),
         getWithCache('/customers', { params: { limit: 1000 } }),
         getWithCache('/stores')
       ])

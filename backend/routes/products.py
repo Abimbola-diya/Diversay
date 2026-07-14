@@ -31,6 +31,8 @@ def list_products(
                 "name": p.name,
                 "category": p.category.value,
                 "default_unit": p.default_unit.value,
+                "brand": p.brand,
+                "unit_price": p.unit_price,
                 "created_at": p.created_at
             }
             for p in products
@@ -58,7 +60,9 @@ def create_product(
     new_product = Product(
         name=product.name,
         category=product.category,
-        default_unit=product.default_unit
+        default_unit=product.default_unit,
+        brand=product.brand,
+        unit_price=product.unit_price
     )
     
     db.add(new_product)
@@ -70,6 +74,8 @@ def create_product(
         "name": new_product.name,
         "category": new_product.category,
         "default_unit": new_product.default_unit,
+        "brand": new_product.brand,
+        "unit_price": new_product.unit_price,
         "created_at": new_product.created_at
     }
 
@@ -104,6 +110,8 @@ def update_product(
         "name": product.name,
         "category": product.category,
         "default_unit": product.default_unit,
+        "brand": product.brand,
+        "unit_price": product.unit_price,
         "created_at": product.created_at
     }
 

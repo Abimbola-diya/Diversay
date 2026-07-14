@@ -95,12 +95,14 @@ class ProductCreate(BaseModel):
     name: str
     category: ProductCategory = ProductCategory.OTHER
     default_unit: UnitType = UnitType.CARTON
+    brand: Optional[str] = "DSL"
     unit_price: float = 0.0
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[ProductCategory] = None
     default_unit: Optional[UnitType] = None
+    brand: Optional[str] = None
     unit_price: Optional[float] = None
 
 class ProductResponse(BaseModel):
@@ -307,4 +309,9 @@ class StoreInventoryResponse(BaseModel):
 
 class StoreInventoryUpdate(BaseModel):
     stock: float
+
+
+class AcknowledgeRequest(BaseModel):
+    notification_id: str
+
 
