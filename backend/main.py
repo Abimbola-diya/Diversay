@@ -101,7 +101,7 @@ def seed_stores():
     try:
         stores_data = [
             {"name": "Lagos Store (Agege)", "city": "Agege", "state": "Lagos", "address": "Central Warehouse & Production Factory, Agege, Lagos", "is_central": True, "phone": "+234 801 000 0001", "manager_name": "Grace"},
-            {"name": "Awe Store", "city": "Awe", "state": "Nasarawa", "address": "Awe Distribution Centre, Nasarawa", "is_central": False, "phone": "+234 801 000 0002", "manager_name": None},
+            {"name": "Awe Store", "city": "Awe", "state": "Oyo", "address": "Awe Distribution Centre, Oyo", "is_central": False, "phone": "+234 801 000 0002", "manager_name": None},
             {"name": "Jos Store", "city": "Jos", "state": "Plateau", "address": "Jos Warehouse, Plateau State", "is_central": False, "phone": "+234 801 000 0003", "manager_name": None},
             {"name": "Owerri Store", "city": "Owerri", "state": "Imo", "address": "Owerri Distribution Hub, Imo State", "is_central": False, "phone": "+234 801 000 0004", "manager_name": None},
             {"name": "Abuja Store", "city": "Abuja", "state": "FCT", "address": "Abuja Logistics Centre, FCT", "is_central": False, "phone": "+234 801 000 0005", "manager_name": None},
