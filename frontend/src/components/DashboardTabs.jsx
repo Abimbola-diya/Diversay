@@ -202,13 +202,31 @@ export default function DashboardTabs() {
       })).filter(o => !acknowledgedIds.includes(o.uniqueId)).slice(0, 10)
       setScheduledDeliveries(scheduled)
 
-      // Pending Issues: All delayed orders
+      // Pending Issues: All delayed orders + Low-stock items
       const delayed = orders.filter(o => o.order_status === 'Delayed')
         .map(o => ({
           ...o,
           uniqueId: `pending-${o.id}`
-        })).filter(o => !acknowledgedIds.includes(o.uniqueId)).slice(0, 10)
-      setPendingIssues(delayed)
+        }))
+      
+      const lowStockIssues = lowStockItems.map(item => ({
+        type: 'lowstock',
+        uniqueId: `pending-lowstock-${item.store_id}-${item.product_id}`,
+        product_name: item.product_name,
+        store_name: item.store_name,
+        storeId: item.store_id,
+        stock: item.stock,
+        unit: item.unit,
+        reorder_level: item.reorder_level,
+        updated_at: item.updated_at
+      }))
+
+      const allIssues = [
+        ...delayed,
+        ...lowStockIssues
+      ].filter(o => !acknowledgedIds.includes(o.uniqueId))
+      
+      setPendingIssues(allIssues)
     } catch (err) {
       console.error('Failed to fetch tab data:', err)
     } finally {
@@ -445,39 +463,83 @@ export default function DashboardTabs() {
             {pendingIssues.length === 0 ? (
               <div className="py-8 text-center text-zinc-400">No pending issues</div>
             ) : (
-              pendingIssues.map(order => {
+              pendingIssues.map(issue => {
+                const isLowStock = issue.type === 'lowstock'
                 const handleClick = () => {
-                  handleAcknowledge(order.uniqueId, 'pending')
-                  if (order.id) {
-                    navigate(`/orders/${order.id}`)
+                  handleAcknowledge(issue.uniqueId, 'pending')
+                  if (isLowStock) {
+                    navigate(`/stores/${issue.storeId}`)
+                  } else if (issue.id) {
+                    navigate(`/orders/${issue.id}`)
                   }
                 }
+                
+                if (isLowStock) {
+                  return (
+                    <div
+                      key={issue.uniqueId}
+                      onClick={handleClick}
+                      className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:border-amber-500/40 cursor-pointer group`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-semibold text-amber-400 group-hover:text-amber-300 transition-colors">Low Stock: {issue.product_name}</h4>
+                            <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30 font-bold uppercase tracking-wider">
+                              {issue.store_name}
+                            </span>
+                          </div>
+                          <p className="text-zinc-400 text-sm font-medium">
+                            {issue.product_name} remains {issue.stock} {issue.unit.toLowerCase()}(s) in {issue.store_name} (threshold: {issue.reorder_level})
+                          </p>
+                          <p className="text-amber-400 text-xs mt-1.5 font-semibold">
+                            Status: <span className="font-bold">Urgent Restock Required</span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 ml-4">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              triggerAcknowledgeAnimation(issue.uniqueId, 'pending')
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
+                          >
+                            <Check size={12} className="text-white" />
+                            Acknowledge
+                          </button>
+                          <ChevronRight size={20} className="text-amber-500 group-hover:text-amber-400" />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
                 return (
                   <div
-                    key={order.id}
+                    key={issue.id}
                     onClick={handleClick}
-                    className={`swipe-out-item ${acknowledgingIds.includes(order.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 cursor-pointer group`}
+                    className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 cursor-pointer group`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-semibold text-red-400 group-hover:text-red-300 transition-colors">{order.customer_name}</h4>
+                          <h4 className="font-semibold text-red-400 group-hover:text-red-300 transition-colors">{issue.customer_name}</h4>
                           <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded border border-red-500/30 font-bold">
-                            {order.order_number}
+                            {issue.order_number}
                           </span>
                         </div>
                         <p className="text-zinc-400 text-sm">
-                          Expected: {new Date(order.expected_delivery_time).toLocaleDateString()}
+                          Expected: {new Date(issue.expected_delivery_time).toLocaleDateString()}
                         </p>
                         <p className="text-red-400 text-xs mt-1 font-semibold">
-                          Status: <span className="font-bold">{order.order_status}</span>
+                          Status: <span className="font-bold">{issue.order_status}</span>
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0 ml-4">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            triggerAcknowledgeAnimation(order.uniqueId, 'pending')
+                            triggerAcknowledgeAnimation(issue.uniqueId, 'pending')
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
                         >
