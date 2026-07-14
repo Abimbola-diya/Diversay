@@ -11,18 +11,34 @@ export default function DashboardMetricsCards() {
 
   useEffect(() => {
     fetchMetrics()
+
+    const handleOrderCreated = () => {
+      fetchMetrics(true)
+    }
+
+    window.addEventListener('order-created', handleOrderCreated)
+    return () => {
+      window.removeEventListener('order-created', handleOrderCreated)
+    }
   }, [])
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = async (force = false) => {
     try {
       if (!metrics) {
         setLoading(true)
       }
-      const { data: resData } = await getWithCache('/analytics/dashboard', {
-        onCacheUpdate: (freshData) => {
-          setMetrics(freshData)
-        }
-      })
+      let resData
+      if (force) {
+        const response = await api.get('/analytics/dashboard')
+        resData = response.data
+      } else {
+        const response = await getWithCache('/analytics/dashboard', {
+          onCacheUpdate: (freshData) => {
+            setMetrics(freshData)
+          }
+        })
+        resData = response.data
+      }
       setMetrics(resData)
       setError(null)
     } catch (err) {

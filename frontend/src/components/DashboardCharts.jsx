@@ -57,18 +57,34 @@ export default function DashboardCharts() {
 
   useEffect(() => {
     fetchAnalytics()
+
+    const handleOrderCreated = () => {
+      fetchAnalytics(true)
+    }
+
+    window.addEventListener('order-created', handleOrderCreated)
+    return () => {
+      window.removeEventListener('order-created', handleOrderCreated)
+    }
   }, [])
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = async (force = false) => {
     try {
       if (!data) {
         setLoading(true)
       }
-      const { data: resData } = await getWithCache('/analytics/dashboard', {
-        onCacheUpdate: (freshData) => {
-          setData(freshData)
-        }
-      })
+      let resData
+      if (force) {
+        const response = await api.get('/analytics/dashboard')
+        resData = response.data
+      } else {
+        const response = await getWithCache('/analytics/dashboard', {
+          onCacheUpdate: (freshData) => {
+            setData(freshData)
+          }
+        })
+        resData = response.data
+      }
       setData(resData)
       setError(null)
     } catch (err) {

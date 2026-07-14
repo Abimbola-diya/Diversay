@@ -412,20 +412,27 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         return api.post('/orders', payload)
       })
 
-      await Promise.all(requests)
-
-      // Trigger order list refresh
-      window.dispatchEvent(new Event('order-created'))
-
-      // Reset form
+      // Reset form & close modal immediately for optimistic instantaneous UI response
       const centralStore = stores.find(s => s.is_central)
       const centralStoreId = centralStore ? centralStore.id.toString() : ''
       setBatchOrders([createInitialOrderObject(centralStoreId)])
       onClose()
+
+      // Await requests in the background
+      Promise.all(requests)
+        .then(() => {
+          // Trigger order list refresh across the entire page
+          window.dispatchEvent(new Event('order-created'))
+        })
+        .catch(err => {
+          console.error('Failed to create orders batch in background:', err)
+        })
+        .finally(() => {
+          setSubmitting(false)
+        })
     } catch (err) {
-      console.error('Failed to create orders batch:', err)
-      setError(err.response?.data?.detail || 'Failed to create order batch. Please check your data and try again.')
-    } finally {
+      console.error('Failed to initiate orders batch creation:', err)
+      setError(err.response?.data?.detail || 'Failed to initiate order creation. Please check your data and try again.')
       setSubmitting(false)
     }
   }

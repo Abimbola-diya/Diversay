@@ -201,9 +201,16 @@ def create_order(
     )
     
     db.commit()
-    db.refresh(new_order)
     
-    return get_order_with_details(new_order)
+    db_order = db.query(Order).options(
+        joinedload(Order.customer),
+        joinedload(Order.source_store),
+        joinedload(Order.destination_store),
+        joinedload(Order.created_by_user),
+        joinedload(Order.line_items).joinedload(OrderLineItem.product)
+    ).filter(Order.id == new_order.id).first()
+    
+    return get_order_with_details(db_order)
 
 @router.get("/", response_model=dict)
 def list_orders(

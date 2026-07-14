@@ -18,6 +18,15 @@ export default function DashboardTabs() {
 
   useEffect(() => {
     fetchTabData()
+
+    const handleOrderCreated = () => {
+      fetchTabData(true)
+    }
+
+    window.addEventListener('order-created', handleOrderCreated)
+    return () => {
+      window.removeEventListener('order-created', handleOrderCreated)
+    }
   }, [])
 
   const triggerAcknowledgeAnimation = (id, tabType) => {
@@ -50,18 +59,28 @@ export default function DashboardTabs() {
     }
   }, [activeTab, loading, notifications, activities, scheduledDeliveries, pendingIssues])
 
-  const fetchTabData = async () => {
+  const fetchTabData = async (force = false) => {
     try {
       setLoading(true)
 
       // Fetch orders for notifications and issues
-      const ordersRes = await getWithCache('/orders', { params: { limit: 100 } })
+      let ordersRes
+      if (force) {
+        ordersRes = await api.get('/orders', { params: { limit: 100 } })
+      } else {
+        ordersRes = await getWithCache('/orders', { params: { limit: 100 } })
+      }
       const orders = ordersRes.data.items || ordersRes.data || []
 
       // Fetch pending approvals for notifications
       let pendingUsers = []
       try {
-        const approvalsRes = await getWithCache('/auth/admin/pending-approvals')
+        let approvalsRes
+        if (force) {
+          approvalsRes = await api.get('/auth/admin/pending-approvals')
+        } else {
+          approvalsRes = await getWithCache('/auth/admin/pending-approvals')
+        }
         pendingUsers = approvalsRes.data.pending_users || approvalsRes.data?.pending_users || []
       } catch (e) {
         pendingUsers = []
@@ -70,7 +89,12 @@ export default function DashboardTabs() {
       // Fetch real system audit logs
       let auditLogs = []
       try {
-        const auditLogsRes = await getWithCache('/analytics/audit-logs')
+        let auditLogsRes
+        if (force) {
+          auditLogsRes = await api.get('/analytics/audit-logs')
+        } else {
+          auditLogsRes = await getWithCache('/analytics/audit-logs')
+        }
         auditLogs = auditLogsRes.data || []
       } catch (e) {
         console.error('Failed to load audit logs:', e)
