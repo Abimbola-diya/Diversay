@@ -1088,6 +1088,7 @@ export default function OrderDetailPage() {
                         <option value="Keg">Keg</option>
                         <option value="Bag">Bag</option>
                         <option value="Pieces">Pieces</option>
+                        <option value="Sachet">Sachet</option>
                       </select>
                     </div>
 
