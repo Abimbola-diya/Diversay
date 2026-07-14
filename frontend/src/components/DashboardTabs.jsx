@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api, { getWithCache } from '../services/api'
 import { AlertCircle, Clock, TrendingUp, Activity, ChevronRight, Check } from 'lucide-react'
@@ -19,7 +19,7 @@ export default function DashboardTabs() {
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 })
   const tabsRef = React.useRef({})
   const pendingScrollSentinelRef = useRef(null)
-  const PENDING_PAGE_SIZE = 10
+  const INITIAL_PAGE_SIZE = 5
 
   useEffect(() => {
     fetchTabData()
@@ -120,19 +120,46 @@ export default function DashboardTabs() {
         console.error('Failed to load low-stock count:', e)
       }
 
-      // Fetch first page of low-stock items for immediate display
+      // Fetch first few items for immediate display
       let lowStockItems = []
       try {
         let lowStockRes
         if (force) {
-          lowStockRes = await api.get('/analytics/low-stock', { params: { limit: PENDING_PAGE_SIZE, offset: 0 } })
+          lowStockRes = await api.get('/analytics/low-stock', { params: { limit: INITIAL_PAGE_SIZE, offset: 0 } })
         } else {
-          lowStockRes = await getWithCache('/analytics/low-stock', { params: { limit: PENDING_PAGE_SIZE, offset: 0 } })
+          lowStockRes = await getWithCache('/analytics/low-stock', { params: { limit: INITIAL_PAGE_SIZE, offset: 0 } })
         }
         lowStockItems = lowStockRes.data || []
-        setHasMorePending(lowStockItems.length >= PENDING_PAGE_SIZE && lowStockItems.length < lowStockCount)
+        setHasMorePending(lowStockItems.length < lowStockCount)
       } catch (e) {
         console.error('Failed to load low-stock items:', e)
+      }
+
+      // Immediately prefetch ALL remaining items in the background (single request)
+      if (lowStockItems.length < lowStockCount) {
+        setLoadingMorePending(true)
+        api.get('/analytics/low-stock', { params: { offset: lowStockItems.length } })
+          .then(res => {
+            const remaining = (res.data || []).map(item => ({
+              type: 'lowstock',
+              uniqueId: item.id,
+              product_name: item.product_name,
+              store_name: item.store_name,
+              storeId: item.store_id,
+              stock: item.stock,
+              unit: item.unit,
+              reorder_level: item.reorder_level,
+              updated_at: item.updated_at
+            }))
+            setPendingIssues(prev => {
+              const existingIds = new Set(prev.map(i => i.uniqueId))
+              const deduped = remaining.filter(i => !existingIds.has(i.uniqueId))
+              return [...prev, ...deduped]
+            })
+            setHasMorePending(false)
+          })
+          .catch(e => console.error('Background prefetch failed:', e))
+          .finally(() => setLoadingMorePending(false))
       }
 
       // Fetch acknowledged notifications list from backend db
@@ -223,55 +250,7 @@ export default function DashboardTabs() {
     }
   }
 
-  const loadMorePendingIssues = useCallback(async () => {
-    if (loadingMorePending || !hasMorePending) return
-    setLoadingMorePending(true)
-    try {
-      const offset = pendingIssues.length
-      const res = await api.get('/analytics/low-stock', { params: { limit: PENDING_PAGE_SIZE, offset } })
-      const newItems = (res.data || []).map(item => ({
-        type: 'lowstock',
-        uniqueId: item.id,
-        product_name: item.product_name,
-        store_name: item.store_name,
-        storeId: item.store_id,
-        stock: item.stock,
-        unit: item.unit,
-        reorder_level: item.reorder_level,
-        updated_at: item.updated_at
-      }))
-      if (newItems.length === 0 || newItems.length < PENDING_PAGE_SIZE) {
-        setHasMorePending(false)
-      }
-      setPendingIssues(prev => {
-        const existingIds = new Set(prev.map(i => i.uniqueId))
-        const deduped = newItems.filter(i => !existingIds.has(i.uniqueId))
-        return [...prev, ...deduped]
-      })
-    } catch (e) {
-      console.error('Failed to load more pending issues:', e)
-    } finally {
-      setLoadingMorePending(false)
-    }
-  }, [loadingMorePending, hasMorePending, pendingIssues.length])
 
-  // IntersectionObserver to trigger loading more pending issues on scroll
-  useEffect(() => {
-    if (activeTab !== 'pending') return
-    const sentinel = pendingScrollSentinelRef.current
-    if (!sentinel) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMorePending && !loadingMorePending) {
-          loadMorePendingIssues()
-        }
-      },
-      { root: sentinel.closest('.custom-scrollbar'), rootMargin: '100px', threshold: 0.1 }
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [activeTab, hasMorePending, loadingMorePending, loadMorePendingIssues])
 
   const handleAcknowledge = async (id, tabType) => {
     // 1. Update local state immediately for instant feedback

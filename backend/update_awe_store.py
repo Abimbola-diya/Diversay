@@ -60,13 +60,16 @@ def update_awe_store():
         logger.info(f"Found Awe Store with ID: {awe_store.id}")
         
         for item in awe_inventory_data:
-            # 1. Get or create product
             product = db.query(Product).filter(
-                Product.name.ilike(item["name"]),
-                Product.is_deleted == False
+                Product.name.ilike(item["name"])
             ).first()
             
-            if not product:
+            if product:
+                if product.is_deleted:
+                    logger.info(f"Undeleting existing product: {product.name}")
+                    product.is_deleted = False
+                    db.commit()
+            else:
                 logger.info(f"Creating product: {item['name']} with default unit: {item['unit']}")
                 product = Product(
                     name=item["name"],

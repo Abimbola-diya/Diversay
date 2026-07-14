@@ -291,24 +291,52 @@ def get_store_analytics(
     days = max(1, min(days, 365))
     movement_dates = {}
     now = datetime.utcnow()
-    for i in range(days):
-        d = (now - timedelta(days=i)).date().isoformat()
-        movement_dates[d] = {"incoming": 0, "outgoing": 0}
-        
-    for o in incoming_orders:
-        if o.dispatch_time:
-            d_str = o.dispatch_time.date().isoformat()
-            if d_str in movement_dates:
-                qty = sum(item.quantity for item in o.line_items)
-                movement_dates[d_str]["incoming"] += qty
-                
-    for o in outgoing_orders:
-        if o.dispatch_time:
-            d_str = o.dispatch_time.date().isoformat()
-            if d_str in movement_dates:
-                qty = sum(item.quantity for item in o.line_items)
-                movement_dates[d_str]["outgoing"] += qty
-                
+    
+    if days == 1:
+        # Today: 4-hour interval buckets for a smooth area chart
+        today_str = now.date().isoformat()
+        for hour in range(0, 24, 4):
+            key = f"{today_str}T{hour:02d}:00:00"
+            movement_dates[key] = {"incoming": 0, "outgoing": 0}
+            
+        today_date = now.date()
+        for o in incoming_orders:
+            if o.dispatch_time and o.dispatch_time.date() == today_date:
+                h = o.dispatch_time.hour
+                bucket_hour = (h // 4) * 4
+                key = f"{today_str}T{bucket_hour:02d}:00:00"
+                if key in movement_dates:
+                    qty = sum(item.quantity for item in o.line_items)
+                    movement_dates[key]["incoming"] += qty
+                    
+        for o in outgoing_orders:
+            if o.dispatch_time and o.dispatch_time.date() == today_date:
+                h = o.dispatch_time.hour
+                bucket_hour = (h // 4) * 4
+                key = f"{today_str}T{bucket_hour:02d}:00:00"
+                if key in movement_dates:
+                    qty = sum(item.quantity for item in o.line_items)
+                    movement_dates[key]["outgoing"] += qty
+    else:
+        # Multi-day: Daily buckets
+        for i in range(days):
+            d = (now - timedelta(days=i)).date().isoformat()
+            movement_dates[d] = {"incoming": 0, "outgoing": 0}
+            
+        for o in incoming_orders:
+            if o.dispatch_time:
+                d_str = o.dispatch_time.date().isoformat()
+                if d_str in movement_dates:
+                    qty = sum(item.quantity for item in o.line_items)
+                    movement_dates[d_str]["incoming"] += qty
+                    
+        for o in outgoing_orders:
+            if o.dispatch_time:
+                d_str = o.dispatch_time.date().isoformat()
+                if d_str in movement_dates:
+                    qty = sum(item.quantity for item in o.line_items)
+                    movement_dates[d_str]["outgoing"] += qty
+                    
     movement_data = [
         {"date": d, "incoming": val["incoming"], "outgoing": val["outgoing"]}
         for d, val in sorted(movement_dates.items())

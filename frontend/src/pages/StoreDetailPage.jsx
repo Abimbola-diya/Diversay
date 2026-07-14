@@ -709,8 +709,11 @@ export default function StoreDetailPage() {
                         fontSize={9} 
                         tickLine={false}
                         tickFormatter={(val) => {
-                          const d = new Date(val + 'T00:00:00')
-                          if (movementRange === '1') return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short' })
+                          const d = val && val.includes('T') ? new Date(val) : new Date(val + 'T00:00:00')
+                          if (isNaN(d.getTime())) return val
+                          if (movementRange === '1') {
+                            return d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
+                          }
                           if (movementRange === '90') return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
                           return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' })
                         }}
@@ -722,7 +725,12 @@ export default function StoreDetailPage() {
                         labelStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
                         itemStyle={{ fontSize: '11px' }}
                         labelFormatter={(val) => {
-                          const d = new Date(val + 'T00:00:00')
+                          const d = val && val.includes('T') ? new Date(val) : new Date(val + 'T00:00:00')
+                          if (isNaN(d.getTime())) return val
+                          if (movementRange === '1') {
+                            return d.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + 
+                                   ' at ' + d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
+                          }
                           return d.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
                         }}
                       />
