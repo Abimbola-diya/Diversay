@@ -215,10 +215,15 @@ def delete_store_inventory(
 @router.get("/{store_id}/analytics")
 def get_store_analytics(
     store_id: int,
+    days: int = 7,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get store-specific analytics."""
+    """Get store-specific analytics.
+    
+    Args:
+        days: Number of days of movement data to return (1=today, 7=this week, 30, 90, etc.)
+    """
     from models import Order, OrderLineItem
     from datetime import datetime, timedelta
     
@@ -280,10 +285,13 @@ def get_store_analytics(
             elif brand == "DSLP":
                 dslp_count += 1
                 dslp_stock += item.stock
-                
+    
+    # Build movement date buckets based on requested day range
+    # Clamp days to a sensible range (1..365)
+    days = max(1, min(days, 365))
     movement_dates = {}
     now = datetime.utcnow()
-    for i in range(7):
+    for i in range(days):
         d = (now - timedelta(days=i)).date().isoformat()
         movement_dates[d] = {"incoming": 0, "outgoing": 0}
         

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api, { getWithCache } from '../services/api'
 import { AlertCircle, Clock, TrendingUp, Activity, ChevronRight, Check } from 'lucide-react'
@@ -13,9 +13,13 @@ export default function DashboardTabs() {
   const [pendingIssues, setPendingIssues] = useState([])
   const [pendingIssuesCount, setPendingIssuesCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingMorePending, setLoadingMorePending] = useState(false)
+  const [hasMorePending, setHasMorePending] = useState(true)
   const [acknowledgingIds, setAcknowledgingIds] = useState([])
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 })
   const tabsRef = React.useRef({})
+  const pendingScrollSentinelRef = useRef(null)
+  const PENDING_PAGE_SIZE = 10
 
   useEffect(() => {
     fetchTabData()
@@ -116,16 +120,17 @@ export default function DashboardTabs() {
         console.error('Failed to load low-stock count:', e)
       }
 
-      // Fetch first 10 low-stock items for immediate display
+      // Fetch first page of low-stock items for immediate display
       let lowStockItems = []
       try {
         let lowStockRes
         if (force) {
-          lowStockRes = await api.get('/analytics/low-stock', { params: { limit: 10 } })
+          lowStockRes = await api.get('/analytics/low-stock', { params: { limit: PENDING_PAGE_SIZE, offset: 0 } })
         } else {
-          lowStockRes = await getWithCache('/analytics/low-stock', { params: { limit: 10 } })
+          lowStockRes = await getWithCache('/analytics/low-stock', { params: { limit: PENDING_PAGE_SIZE, offset: 0 } })
         }
         lowStockItems = lowStockRes.data || []
+        setHasMorePending(lowStockItems.length >= PENDING_PAGE_SIZE && lowStockItems.length < lowStockCount)
       } catch (e) {
         console.error('Failed to load low-stock items:', e)
       }
@@ -217,6 +222,56 @@ export default function DashboardTabs() {
       setLoading(false)
     }
   }
+
+  const loadMorePendingIssues = useCallback(async () => {
+    if (loadingMorePending || !hasMorePending) return
+    setLoadingMorePending(true)
+    try {
+      const offset = pendingIssues.length
+      const res = await api.get('/analytics/low-stock', { params: { limit: PENDING_PAGE_SIZE, offset } })
+      const newItems = (res.data || []).map(item => ({
+        type: 'lowstock',
+        uniqueId: item.id,
+        product_name: item.product_name,
+        store_name: item.store_name,
+        storeId: item.store_id,
+        stock: item.stock,
+        unit: item.unit,
+        reorder_level: item.reorder_level,
+        updated_at: item.updated_at
+      }))
+      if (newItems.length === 0 || newItems.length < PENDING_PAGE_SIZE) {
+        setHasMorePending(false)
+      }
+      setPendingIssues(prev => {
+        const existingIds = new Set(prev.map(i => i.uniqueId))
+        const deduped = newItems.filter(i => !existingIds.has(i.uniqueId))
+        return [...prev, ...deduped]
+      })
+    } catch (e) {
+      console.error('Failed to load more pending issues:', e)
+    } finally {
+      setLoadingMorePending(false)
+    }
+  }, [loadingMorePending, hasMorePending, pendingIssues.length])
+
+  // IntersectionObserver to trigger loading more pending issues on scroll
+  useEffect(() => {
+    if (activeTab !== 'pending') return
+    const sentinel = pendingScrollSentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMorePending && !loadingMorePending) {
+          loadMorePendingIssues()
+        }
+      },
+      { root: sentinel.closest('.custom-scrollbar'), rootMargin: '100px', threshold: 0.1 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [activeTab, hasMorePending, loadingMorePending, loadMorePendingIssues])
 
   const handleAcknowledge = async (id, tabType) => {
     // 1. Update local state immediately for instant feedback
@@ -445,65 +500,82 @@ export default function DashboardTabs() {
       case 'pending':
         return (
           <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
-            {pendingIssues.length === 0 ? (
+            {pendingIssues.length === 0 && !loadingMorePending ? (
               <div className="py-8 text-center text-zinc-400">No pending issues</div>
             ) : (
-              pendingIssues.map(issue => {
-                const handleClick = () => {
-                  handleAcknowledge(issue.uniqueId, 'pending')
-                  navigate(`/store/${issue.storeId}`)
-                }
-                
-                const isDepleted = issue.stock <= 0
-                const bgClass = isDepleted 
-                  ? 'bg-red-500/10 border-red-500/20 hover:border-red-500/40' 
-                  : 'bg-yellow-500/10 border-yellow-500/20 hover:border-yellow-500/40'
-                const textClass = isDepleted ? 'text-red-400 group-hover:text-red-300' : 'text-yellow-400 group-hover:text-yellow-300'
-                const badgeClass = isDepleted 
-                  ? 'bg-red-500/25 text-red-400 border border-red-500/30' 
-                  : 'bg-yellow-500/25 text-yellow-400 border border-yellow-500/30'
-                const titleText = isDepleted ? `Depleted: ${issue.product_name}` : `Low Stock: ${issue.product_name}`
-                const statusText = isDepleted ? 'Stock Depleted (Restock Immediate)' : 'Below Threshold (Plan Restock)'
-                const chevronColor = isDepleted ? 'text-red-500 group-hover:text-red-400' : 'text-yellow-500 group-hover:text-yellow-400'
+              <>
+                {pendingIssues.map(issue => {
+                  const handleClick = () => {
+                    handleAcknowledge(issue.uniqueId, 'pending')
+                    navigate(`/store/${issue.storeId}`)
+                  }
+                  
+                  const isDepleted = issue.stock <= 0
+                  const bgClass = isDepleted 
+                    ? 'bg-red-500/10 border-red-500/20 hover:border-red-500/40' 
+                    : 'bg-yellow-500/10 border-yellow-500/20 hover:border-yellow-500/40'
+                  const textClass = isDepleted ? 'text-red-400 group-hover:text-red-300' : 'text-yellow-400 group-hover:text-yellow-300'
+                  const badgeClass = isDepleted 
+                    ? 'bg-red-500/25 text-red-400 border border-red-500/30' 
+                    : 'bg-yellow-500/25 text-yellow-400 border border-yellow-500/30'
+                  const titleText = isDepleted ? `Depleted: ${issue.product_name}` : `Low Stock: ${issue.product_name}`
+                  const statusText = isDepleted ? 'Stock Depleted (Restock Immediate)' : 'Below Threshold (Plan Restock)'
+                  const chevronColor = isDepleted ? 'text-red-500 group-hover:text-red-400' : 'text-yellow-500 group-hover:text-yellow-400'
 
-                return (
-                  <div
-                    key={issue.uniqueId}
-                    onClick={handleClick}
-                    className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 border rounded-lg cursor-pointer group transition-all ${bgClass}`}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className={`font-semibold transition-colors ${textClass}`}>{titleText}</h4>
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${badgeClass}`}>
-                            {issue.store_name}
-                          </span>
+                  return (
+                    <div
+                      key={issue.uniqueId}
+                      onClick={handleClick}
+                      className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 border rounded-lg cursor-pointer group transition-all ${bgClass}`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className={`font-semibold transition-colors ${textClass}`}>{titleText}</h4>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${badgeClass}`}>
+                              {issue.store_name}
+                            </span>
+                          </div>
+                          <p className="text-zinc-400 text-sm font-medium">
+                            {issue.product_name} remains {issue.stock} {issue.unit.toLowerCase()}(s) in {issue.store_name} (threshold: {issue.reorder_level})
+                          </p>
+                          <p className={`text-xs mt-1.5 font-semibold ${textClass}`}>
+                            Status: <span className="font-bold">{statusText}</span>
+                          </p>
                         </div>
-                        <p className="text-zinc-400 text-sm font-medium">
-                          {issue.product_name} remains {issue.stock} {issue.unit.toLowerCase()}(s) in {issue.store_name} (threshold: {issue.reorder_level})
-                        </p>
-                        <p className={`text-xs mt-1.5 font-semibold ${textClass}`}>
-                          Status: <span className="font-bold">{statusText}</span>
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-4">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            triggerAcknowledgeAnimation(issue.uniqueId, 'pending')
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
-                        >
-                          <Check size={12} className="text-white" />
-                          Acknowledge
-                        </button>
-                        <ChevronRight size={20} className={`transition-all ${chevronColor}`} />
+                        <div className="flex items-center gap-3 shrink-0 ml-4">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              triggerAcknowledgeAnimation(issue.uniqueId, 'pending')
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
+                          >
+                            <Check size={12} className="text-white" />
+                            Acknowledge
+                          </button>
+                          <ChevronRight size={20} className={`transition-all ${chevronColor}`} />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })
+                  )
+                })}
+
+                {/* Scroll sentinel + loading indicator */}
+                <div ref={pendingScrollSentinelRef} className="py-2">
+                  {loadingMorePending && (
+                    <div className="flex items-center justify-center gap-2 py-3 text-zinc-500 text-sm">
+                      <div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+                      Loading more issues...
+                    </div>
+                  )}
+                  {!hasMorePending && pendingIssues.length > 0 && (
+                    <div className="text-center text-zinc-600 text-xs py-2">
+                      Showing all {pendingIssues.length} of {pendingIssuesCount} issues
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )

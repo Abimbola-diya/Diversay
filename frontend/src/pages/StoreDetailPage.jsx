@@ -83,10 +83,39 @@ export default function StoreDetailPage() {
   const [analytics, setAnalytics] = useState(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
+  // Movement range selector
+  const [movementRange, setMovementRange] = useState('7')
+  const [movementLoading, setMovementLoading] = useState(false)
+
+  const MOVEMENT_RANGES = [
+    { value: '1', label: 'Today' },
+    { value: '7', label: 'This Week' },
+    { value: '30', label: 'Last 30 Days' },
+    { value: '90', label: 'Last 3 Months' }
+  ]
+
   useEffect(() => {
     fetchStoreAndInventory()
     fetchAnalytics()
   }, [id])
+
+  // Re-fetch only movement data when range changes
+  useEffect(() => {
+    if (!analytics) return // wait for initial load
+    fetchMovementData(movementRange)
+  }, [movementRange])
+
+  const fetchMovementData = async (days) => {
+    try {
+      setMovementLoading(true)
+      const res = await api.get(`/stores/${id}/analytics`, { params: { days: parseInt(days) } })
+      setAnalytics(prev => ({ ...prev, movement_data: res.data.movement_data }))
+    } catch (err) {
+      console.error('Failed to load movement data:', err)
+    } finally {
+      setMovementLoading(false)
+    }
+  }
 
   const fetchAnalytics = async () => {
     try {
@@ -635,11 +664,31 @@ export default function StoreDetailPage() {
 
             {/* Movement Flow Area Chart */}
             <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-6 shadow-xl flex flex-col min-h-[350px]">
-              <div className="flex items-center gap-2 mb-6">
-                <ArrowRightLeft size={16} className="text-purple-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Stock Movement Flow (Last 7 Days)</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft size={16} className="text-purple-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Stock Movement Flow
+                    {movementLoading && <span className="ml-2 text-zinc-500 normal-case font-medium">Updating...</span>}
+                  </h3>
+                </div>
+                <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-xl">
+                  {MOVEMENT_RANGES.map(range => (
+                    <button
+                      key={range.value}
+                      onClick={() => setMovementRange(range.value)}
+                      className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 whitespace-nowrap ${
+                        movementRange === range.value
+                          ? 'bg-purple-500/15 text-purple-400 border border-purple-500/25 shadow-sm'
+                          : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                      }`}
+                    >
+                      {range.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex-1 w-full h-[250px]">
+              <div className={`flex-1 w-full h-[250px] transition-opacity duration-200 ${movementLoading ? 'opacity-40' : 'opacity-100'}`}>
                 {analytics.movement_data && analytics.movement_data.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={analytics.movement_data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -654,12 +703,28 @@ export default function StoreDetailPage() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid stroke="#18181b" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" stroke="#71717a" fontSize={9} tickLine={false} />
+                      <XAxis 
+                        dataKey="date" 
+                        stroke="#71717a" 
+                        fontSize={9} 
+                        tickLine={false}
+                        tickFormatter={(val) => {
+                          const d = new Date(val + 'T00:00:00')
+                          if (movementRange === '1') return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short' })
+                          if (movementRange === '90') return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
+                          return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' })
+                        }}
+                        interval={movementRange === '90' ? 6 : movementRange === '30' ? 2 : 0}
+                      />
                       <YAxis stroke="#71717a" fontSize={9} tickLine={false} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px' }}
                         labelStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
                         itemStyle={{ fontSize: '11px' }}
+                        labelFormatter={(val) => {
+                          const d = new Date(val + 'T00:00:00')
+                          return d.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                        }}
                       />
                       <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }} />
                       <Area name="Incoming Units (Received)" type="monotone" dataKey="incoming" stroke="#10b981" fillOpacity={1} fill="url(#colorIncoming)" strokeWidth={2} />
@@ -668,7 +733,7 @@ export default function StoreDetailPage() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-full flex items-center justify-center text-zinc-550 text-xs font-medium">
-                    No movements logged in the last 7 days.
+                    {movementLoading ? 'Loading movement data...' : `No movements logged for ${MOVEMENT_RANGES.find(r => r.value === movementRange)?.label || 'this period'}.`}
                   </div>
                 )}
               </div>

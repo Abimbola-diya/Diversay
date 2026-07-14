@@ -193,6 +193,7 @@ def acknowledge_notification(
 @router.get("/low-stock")
 def get_low_stock_items(
     limit: int = None,
+    offset: int = 0,
     count_only: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -222,7 +223,9 @@ def get_low_stock_items(
             
     if count_only:
         return {"count": len(non_acknowledged)}
-        
+    
+    # Apply offset first, then limit for pagination
+    non_acknowledged = non_acknowledged[offset:]
     if limit is not None:
         non_acknowledged = non_acknowledged[:limit]
         
