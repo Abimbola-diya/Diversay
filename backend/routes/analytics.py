@@ -192,16 +192,40 @@ def acknowledge_notification(
 
 @router.get("/low-stock")
 def get_low_stock_items(
+    limit: int = None,
+    count_only: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Retrieve all store inventory items that are below their reorder level."""
-    low_stock = db.query(StoreInventory).join(Product).join(Store).filter(
+    # Find all acknowledgments for this user
+    acks = db.query(NotificationAcknowledgment.notification_id).filter(
+        NotificationAcknowledgment.user_id == current_user.id
+    ).all()
+    ack_ids = {a[0] for a in acks}
+    
+    # We query all low stock items
+    query = db.query(StoreInventory).join(Product).join(Store).filter(
         StoreInventory.stock <= StoreInventory.reorder_level,
         Product.is_deleted == False,
         Store.is_deleted == False
-    ).all()
+    )
     
+    # In order to make it fast, if there are no parameters, we can filter in memory.
+    # Since low_stock count is usually small (<100), this is very fast.
+    all_items = query.all()
+    non_acknowledged = []
+    for item in all_items:
+        notif_id = f"lowstock-{item.store_id}-{item.product_id}"
+        if notif_id not in ack_ids:
+            non_acknowledged.append(item)
+            
+    if count_only:
+        return {"count": len(non_acknowledged)}
+        
+    if limit is not None:
+        non_acknowledged = non_acknowledged[:limit]
+        
     return [
         {
             "id": f"lowstock-{item.store_id}-{item.product_id}",
@@ -214,6 +238,6 @@ def get_low_stock_items(
             "unit": item.product.default_unit.value,
             "updated_at": item.store.updated_at.isoformat() if item.store.updated_at else datetime.utcnow().isoformat()
         }
-        for item in low_stock
+        for item in non_acknowledged
     ]
 

@@ -11,6 +11,7 @@ export default function DashboardTabs() {
   const [activities, setActivities] = useState([])
   const [scheduledDeliveries, setScheduledDeliveries] = useState([])
   const [pendingIssues, setPendingIssues] = useState([])
+  const [pendingIssuesCount, setPendingIssuesCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [acknowledgingIds, setAcknowledgingIds] = useState([])
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 })
@@ -100,14 +101,29 @@ export default function DashboardTabs() {
         console.error('Failed to load audit logs:', e)
       }
 
-      // Fetch low-stock items for alerts
+      // Fetch low-stock count first (instantaneous)
+      let lowStockCount = 0
+      try {
+        let countRes
+        if (force) {
+          countRes = await api.get('/analytics/low-stock', { params: { count_only: true } })
+        } else {
+          countRes = await getWithCache('/analytics/low-stock', { params: { count_only: true } })
+        }
+        lowStockCount = countRes.data?.count || 0
+        setPendingIssuesCount(lowStockCount)
+      } catch (e) {
+        console.error('Failed to load low-stock count:', e)
+      }
+
+      // Fetch first 10 low-stock items for immediate display
       let lowStockItems = []
       try {
         let lowStockRes
         if (force) {
-          lowStockRes = await api.get('/analytics/low-stock')
+          lowStockRes = await api.get('/analytics/low-stock', { params: { limit: 10 } })
         } else {
-          lowStockRes = await getWithCache('/analytics/low-stock')
+          lowStockRes = await getWithCache('/analytics/low-stock', { params: { limit: 10 } })
         }
         lowStockItems = lowStockRes.data || []
       } catch (e) {
@@ -124,72 +140,51 @@ export default function DashboardTabs() {
         acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
       }
 
-      // Process notifications: Pending approvals + Overdue orders + Low-stock items
+      // Process notifications: Only Overdue/Delayed orders (order-related only)
       const now = new Date()
-      const notificationsList = [
-        ...pendingUsers.map(user => ({
-          id: `approval-${user.id}`,
-          type: 'approval',
-          title: 'Pending Admin Request',
-          message: `${user.full_name} (${user.email}) is requesting admin access`,
-          timestamp: user.created_at,
-          priority: 'high'
-        })),
-        ...orders
-          .filter(o => o.order_status === 'Delayed' && !o.actual_delivery_time)
-          .map(o => ({
-            id: `delayed-${o.id}`,
-            type: 'delayed',
-            title: 'Overdue Delivery',
-            message: `Order ${o.order_number} from ${o.customer_name} is overdue`,
-            timestamp: o.expected_delivery_time,
-            priority: 'high',
-            order: o
-          })),
-        ...lowStockItems.map(item => ({
-          id: item.id,
-          type: 'lowstock',
-          title: 'Low Stock Alert',
-          message: `${item.product_name} remains ${item.stock} ${item.unit.toLowerCase()}(s) in ${item.store_name} (threshold: ${item.reorder_level})`,
-          timestamp: item.updated_at,
+      const notificationsList = orders
+        .filter(o => o.order_status === 'Delayed' && !o.actual_delivery_time)
+        .map(o => ({
+          id: `delayed-${o.id}`,
+          type: 'delayed',
+          title: 'Overdue Delivery',
+          message: `Order ${o.order_number} from ${o.customer_name} is overdue`,
+          timestamp: o.expected_delivery_time,
           priority: 'high',
-          storeId: item.store_id
+          order: o
         }))
-      ].filter(n => !acknowledgedIds.includes(n.id))
+        .filter(n => !acknowledgedIds.includes(n.id))
       setNotifications(notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)))
 
-      // Process activities from actual audit logs
-      const activitiesList = auditLogs.map(log => {
-        let detailsObj = null
-        try {
-          detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details
-        } catch (e) {}
+      // Process activities from actual audit logs (only relating to orders)
+      const activitiesList = auditLogs
+        .filter(log => log.table_name === 'orders')
+        .map(log => {
+          let detailsObj = null
+          try {
+            detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details
+          } catch (e) {}
 
-        const actionText = detailsObj?.action || log.action.replace(/_/g, ' ')
-        
-        let message = `Record #${log.record_id} in ${log.table_name}`
-        if (log.table_name === 'orders') {
+          const actionText = detailsObj?.action || log.action.replace(/_/g, ' ')
+          
+          let message = `Record #${log.record_id} in ${log.table_name}`
           const snap = detailsObj?.state_snapshot
           if (snap) {
             message = `Order ${snap.order_number || ('ID ' + log.record_id)} for ${snap.customer_name || 'Customer'}`
           } else {
             message = `Order ID ${log.record_id}`
           }
-        } else if (log.table_name === 'customers') {
-          const snap = detailsObj?.state_snapshot
-          message = `Customer ${snap?.name || ('ID ' + log.record_id)}`
-        }
 
-        return {
-          id: `activity-${log.id}`,
-          orderId: log.table_name === 'orders' ? log.record_id : null,
-          type: 'audit_log',
-          title: `${actionText} by ${log.user_name || 'Operator'}`,
-          message: message,
-          timestamp: log.timestamp,
-          action: log.action
-        }
-      }).filter(act => !acknowledgedIds.includes(act.id)).slice(0, 10)
+          return {
+            id: `activity-${log.id}`,
+            orderId: log.record_id,
+            type: 'audit_log',
+            title: `${actionText} by ${log.user_name || 'Operator'}`,
+            message: message,
+            timestamp: log.timestamp,
+            action: log.action
+          }
+        }).filter(act => !acknowledgedIds.includes(act.id)).slice(0, 10)
       setActivities(activitiesList)
 
       // Scheduled Deliveries: Orders with future expected delivery times
@@ -202,16 +197,10 @@ export default function DashboardTabs() {
       })).filter(o => !acknowledgedIds.includes(o.uniqueId)).slice(0, 10)
       setScheduledDeliveries(scheduled)
 
-      // Pending Issues: All delayed orders + Low-stock items
-      const delayed = orders.filter(o => o.order_status === 'Delayed')
-        .map(o => ({
-          ...o,
-          uniqueId: `pending-${o.id}`
-        }))
-      
+      // Pending Issues: Specifically for stock count (low-stock alerts, count limited for speed)
       const lowStockIssues = lowStockItems.map(item => ({
         type: 'lowstock',
-        uniqueId: `pending-lowstock-${item.store_id}-${item.product_id}`,
+        uniqueId: item.id,
         product_name: item.product_name,
         store_name: item.store_name,
         storeId: item.store_id,
@@ -220,13 +209,8 @@ export default function DashboardTabs() {
         reorder_level: item.reorder_level,
         updated_at: item.updated_at
       }))
-
-      const allIssues = [
-        ...delayed,
-        ...lowStockIssues
-      ].filter(o => !acknowledgedIds.includes(o.uniqueId))
       
-      setPendingIssues(allIssues)
+      setPendingIssues(lowStockIssues)
     } catch (err) {
       console.error('Failed to fetch tab data:', err)
     } finally {
@@ -244,6 +228,7 @@ export default function DashboardTabs() {
       setScheduledDeliveries(prev => prev.filter(o => o.uniqueId !== id))
     } else if (tabType === 'pending') {
       setPendingIssues(prev => prev.filter(o => o.uniqueId !== id))
+      setPendingIssuesCount(prev => Math.max(0, prev - 1))
     }
 
     // 2. Post to backend DB
@@ -267,7 +252,7 @@ export default function DashboardTabs() {
     { id: 'notifications', label: 'Notifications', icon: AlertCircle, badge: notifications.length },
     { id: 'activities', label: 'Activities', icon: Activity, badge: activities.length },
     { id: 'scheduled', label: 'Scheduled Deliveries', icon: Clock, badge: scheduledDeliveries.length },
-    { id: 'pending', label: 'Pending Issues', icon: TrendingUp, badge: pendingIssues.length }
+    { id: 'pending', label: 'Pending Issues', icon: TrendingUp, badge: pendingIssuesCount }
   ]
 
   const getStatusColor = (status) => {
@@ -464,75 +449,30 @@ export default function DashboardTabs() {
               <div className="py-8 text-center text-zinc-400">No pending issues</div>
             ) : (
               pendingIssues.map(issue => {
-                const isLowStock = issue.type === 'lowstock'
                 const handleClick = () => {
                   handleAcknowledge(issue.uniqueId, 'pending')
-                  if (isLowStock) {
-                    navigate(`/stores/${issue.storeId}`)
-                  } else if (issue.id) {
-                    navigate(`/orders/${issue.id}`)
-                  }
+                  navigate(`/store/${issue.storeId}`)
                 }
                 
-                if (isLowStock) {
-                  return (
-                    <div
-                      key={issue.uniqueId}
-                      onClick={handleClick}
-                      className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:border-amber-500/40 cursor-pointer group`}
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-semibold text-amber-400 group-hover:text-amber-300 transition-colors">Low Stock: {issue.product_name}</h4>
-                            <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30 font-bold uppercase tracking-wider">
-                              {issue.store_name}
-                            </span>
-                          </div>
-                          <p className="text-zinc-400 text-sm font-medium">
-                            {issue.product_name} remains {issue.stock} {issue.unit.toLowerCase()}(s) in {issue.store_name} (threshold: {issue.reorder_level})
-                          </p>
-                          <p className="text-amber-400 text-xs mt-1.5 font-semibold">
-                            Status: <span className="font-bold">Urgent Restock Required</span>
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0 ml-4">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              triggerAcknowledgeAnimation(issue.uniqueId, 'pending')
-                            }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
-                          >
-                            <Check size={12} className="text-white" />
-                            Acknowledge
-                          </button>
-                          <ChevronRight size={20} className="text-amber-500 group-hover:text-amber-400" />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                }
-
                 return (
                   <div
-                    key={issue.id}
+                    key={issue.uniqueId}
                     onClick={handleClick}
-                    className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 cursor-pointer group`}
+                    className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:border-amber-500/40 cursor-pointer group`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-semibold text-red-400 group-hover:text-red-300 transition-colors">{issue.customer_name}</h4>
-                          <span className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded border border-red-500/30 font-bold">
-                            {issue.order_number}
+                          <h4 className="font-semibold text-amber-400 group-hover:text-amber-300 transition-colors">Low Stock: {issue.product_name}</h4>
+                          <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30 font-bold uppercase tracking-wider">
+                            {issue.store_name}
                           </span>
                         </div>
-                        <p className="text-zinc-400 text-sm">
-                          Expected: {new Date(issue.expected_delivery_time).toLocaleDateString()}
+                        <p className="text-zinc-400 text-sm font-medium">
+                          {issue.product_name} remains {issue.stock} {issue.unit.toLowerCase()}(s) in {issue.store_name} (threshold: {issue.reorder_level})
                         </p>
-                        <p className="text-red-400 text-xs mt-1 font-semibold">
-                          Status: <span className="font-bold">{issue.order_status}</span>
+                        <p className="text-amber-400 text-xs mt-1.5 font-semibold">
+                          Status: <span className="font-bold">Urgent Restock Required</span>
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0 ml-4">
@@ -546,7 +486,7 @@ export default function DashboardTabs() {
                           <Check size={12} className="text-white" />
                           Acknowledge
                         </button>
-                        <ChevronRight size={20} className="text-red-500 group-hover:text-red-400" />
+                        <ChevronRight size={20} className="text-amber-500 group-hover:text-amber-400" />
                       </div>
                     </div>
                   </div>
