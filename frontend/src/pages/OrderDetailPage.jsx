@@ -206,8 +206,8 @@ export default function OrderDetailPage() {
     const changes = []
 
     const fields = [
-      { key: 'waybill_number', label: 'Waybill Number' },
-      { key: 'invoice_number', label: 'Invoice Number' },
+      { key: 'invoice_number', label: 'Invoice No' },
+      { key: 'waybill_number', label: 'Delivery No' },
       { key: 'driver_name', label: 'Driver Name' },
       { key: 'vehicle_number', label: 'Vehicle Number' },
       { key: 'notes', label: 'Notes' }
@@ -845,20 +845,20 @@ export default function OrderDetailPage() {
             {isEditing ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-450 mb-1">Waybill Number</label>
-                  <input
-                    type="text"
-                    value={editWaybill}
-                    onChange={(e) => setEditWaybill(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-455 mb-1">Invoice Number</label>
+                  <label className="block text-xs font-semibold text-zinc-455 mb-1">Invoice No</label>
                   <input
                     type="text"
                     value={editInvoice}
                     onChange={(e) => setEditInvoice(e.target.value)}
+                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-450 mb-1">Delivery No</label>
+                  <input
+                    type="text"
+                    value={editWaybill}
+                    onChange={(e) => setEditWaybill(e.target.value)}
                     className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
@@ -920,18 +920,18 @@ export default function OrderDetailPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                 <div>
-                  <span className="text-xs text-zinc-300 font-medium block">Waybill Number</span>
-                  <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('waybill_number', displayOrder.waybill_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
-                    {displayOrder.waybill_number || "N/A"}
-                  </span>
-                  {getFieldDiffMarker('waybill_number', displayOrder.waybill_number)}
-                </div>
-                <div>
-                  <span className="text-xs text-zinc-300 font-medium block">Invoice Number</span>
+                  <span className="text-xs text-zinc-300 font-medium block">Invoice No</span>
                   <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('invoice_number', displayOrder.invoice_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
                     {displayOrder.invoice_number || "N/A"}
                   </span>
                   {getFieldDiffMarker('invoice_number', displayOrder.invoice_number)}
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-300 font-medium block">Delivery No</span>
+                  <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('waybill_number', displayOrder.waybill_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                    {displayOrder.waybill_number || "N/A"}
+                  </span>
+                  {getFieldDiffMarker('waybill_number', displayOrder.waybill_number)}
                 </div>
                 <div>
                   <span className="text-xs text-zinc-300 font-medium block">Driver Name</span>

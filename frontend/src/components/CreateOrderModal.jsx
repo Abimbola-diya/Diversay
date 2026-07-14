@@ -443,6 +443,34 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
+    // Check for duplicate Delivery No or Invoice No within the batch
+    const seenWaybills = new Set()
+    const seenInvoices = new Set()
+    for (let i = 0; i < batchOrders.length; i++) {
+      const order = batchOrders[i]
+      if (order.waybills) {
+        for (let w = 0; w < order.waybills.length; w++) {
+          const wb = order.waybills[w]
+          if (wb.waybillNumber.trim()) {
+            const fullWb = (wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/') + wb.waybillNumber.trim()
+            if (seenWaybills.has(fullWb)) {
+              setError(`Duplicate Delivery No found: "${fullWb}". Two different reference cards cannot have the same Delivery No.`)
+              return
+            }
+            seenWaybills.add(fullWb)
+          }
+          if (wb.invoiceNumber.trim()) {
+            const fullInv = (wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/') + wb.invoiceNumber.trim()
+            if (seenInvoices.has(fullInv)) {
+              setError(`Duplicate Invoice No found: "${fullInv}". Two different reference cards cannot have the same Invoice No.`)
+              return
+            }
+            seenInvoices.add(fullInv)
+          }
+        }
+      }
+    }
+    
     // Validate each order
     for (let i = 0; i < batchOrders.length; i++) {
       const order = batchOrders[i]
@@ -467,13 +495,13 @@ export default function CreateOrderModal({ isOpen, onClose }) {
 
       // Validate waybill and invoice fields
       if (!order.waybills || order.waybills.length === 0) {
-        setError(`Please add at least one waybill and invoice reference for ${orderLabel}.`)
+        setError(`Please add at least one Invoice & Delivery reference for ${orderLabel}.`)
         return
       }
       for (let w = 0; w < order.waybills.length; w++) {
         const wb = order.waybills[w]
         if (!wb.waybillNumber.trim() || !wb.invoiceNumber.trim()) {
-          setError(`Please fill in both the waybill and invoice numbers for card #${w + 1} in ${orderLabel}.`)
+          setError(`Please fill in both the Invoice No and Delivery No for card #${w + 1} in ${orderLabel}.`)
           return
         }
       }
@@ -571,7 +599,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       }
 
       // Send all POST requests concurrently
-      const requests = payloads.map(payload => api.post('/orders', payload))
+      const requests = payloads.map(payload => api.post('/orders/', payload))
 
       // Reset form & close modal immediately for optimistic instantaneous UI response
       const centralStore = stores.find(s => s.is_central)
@@ -712,11 +740,11 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                       </div>
                     </div>
 
-                    {/* Waybills & Invoices List */}
+                    {/* Invoices & Deliveries List */}
                     <div className="space-y-3 pt-2">
                       <div className="flex items-center justify-between">
                         <label className="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <FileText size={13} /> Waybill & Invoice Reference(s) <span className="text-red-500">*</span>
+                          <FileText size={13} /> Invoice & Delivery Reference(s) <span className="text-red-500">*</span>
                         </label>
                         <button
                           type="button"
@@ -773,23 +801,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Waybill Number</label>
-                                <div className="flex rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/60 focus-within:border-zinc-600 transition-colors">
-                                  <span className="bg-zinc-900/60 px-3 py-2 text-zinc-400 text-xs font-semibold select-none border-r border-zinc-800 flex items-center min-w-[76px] justify-center">
-                                    {wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/'}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. 1002"
-                                    required
-                                    value={wb.waybillNumber}
-                                    onChange={(e) => updateWaybill(order.id, wb.id, 'waybillNumber', e.target.value)}
-                                    className="w-full px-3 py-2 bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none text-xs"
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Invoice Number</label>
+                                <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Invoice No</label>
                                 <div className="flex rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/60 focus-within:border-zinc-600 transition-colors">
                                   <span className="bg-zinc-900/60 px-3 py-2 text-zinc-400 text-xs font-semibold select-none border-r border-zinc-800 flex items-center min-w-[76px] justify-center">
                                     {wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/'}
@@ -800,6 +812,22 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                     required
                                     value={wb.invoiceNumber}
                                     onChange={(e) => updateWaybill(order.id, wb.id, 'invoiceNumber', e.target.value)}
+                                    className="w-full px-3 py-2 bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none text-xs"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Delivery No</label>
+                                <div className="flex rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/60 focus-within:border-zinc-600 transition-colors">
+                                  <span className="bg-zinc-900/60 px-3 py-2 text-zinc-400 text-xs font-semibold select-none border-r border-zinc-800 flex items-center min-w-[76px] justify-center">
+                                    {wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/'}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. 1002"
+                                    required
+                                    value={wb.waybillNumber}
+                                    onChange={(e) => updateWaybill(order.id, wb.id, 'waybillNumber', e.target.value)}
                                     className="w-full px-3 py-2 bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none text-xs"
                                   />
                                 </div>

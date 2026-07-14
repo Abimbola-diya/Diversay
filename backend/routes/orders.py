@@ -118,6 +118,28 @@ def create_order(
     # Create a map of product ID to product for quick lookup
     products_map = {p.id: p for p in products}
     
+    if order_create.waybill_number:
+        existing_waybill = db.query(Order).filter(
+            Order.waybill_number == order_create.waybill_number,
+            Order.is_deleted == False
+        ).first()
+        if existing_waybill:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Delivery No '{order_create.waybill_number}' is already in use by order {existing_waybill.order_number}."
+            )
+            
+    if order_create.invoice_number:
+        existing_invoice = db.query(Order).filter(
+            Order.invoice_number == order_create.invoice_number,
+            Order.is_deleted == False
+        ).first()
+        if existing_invoice:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invoice No '{order_create.invoice_number}' is already in use by order {existing_invoice.order_number}."
+            )
+
     order_number = generate_order_number(db)
     
     new_order = Order(
@@ -428,8 +450,29 @@ def update_order(
         order.customer_id = order_update.customer_id
     
     if order_update.waybill_number:
+        existing_waybill = db.query(Order).filter(
+            Order.waybill_number == order_update.waybill_number,
+            Order.id != order_id,
+            Order.is_deleted == False
+        ).first()
+        if existing_waybill:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Delivery No '{order_update.waybill_number}' is already in use by order {existing_waybill.order_number}."
+            )
         order.waybill_number = order_update.waybill_number
+
     if order_update.invoice_number:
+        existing_invoice = db.query(Order).filter(
+            Order.invoice_number == order_update.invoice_number,
+            Order.id != order_id,
+            Order.is_deleted == False
+        ).first()
+        if existing_invoice:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invoice No '{order_update.invoice_number}' is already in use by order {existing_invoice.order_number}."
+            )
         order.invoice_number = order_update.invoice_number
     if order_update.dispatch_time:
         order.dispatch_time = order_update.dispatch_time

@@ -120,7 +120,7 @@ export default function OrdersTable() {
         params.end_date = endOfToday.toISOString()
       }
 
-      const response = await api.get('/orders', { params })
+      const response = await api.get('/orders/', { params })
 
       if (requestId === fetchRequestRef.current) {
         const items = response.data.items || []
