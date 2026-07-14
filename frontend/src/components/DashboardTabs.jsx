@@ -12,12 +12,22 @@ export default function DashboardTabs() {
   const [scheduledDeliveries, setScheduledDeliveries] = useState([])
   const [pendingIssues, setPendingIssues] = useState([])
   const [loading, setLoading] = useState(true)
+  const [acknowledgingIds, setAcknowledgingIds] = useState([])
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 })
   const tabsRef = React.useRef({})
 
   useEffect(() => {
     fetchTabData()
   }, [])
+
+  const triggerAcknowledgeAnimation = (id, tabType) => {
+    if (acknowledgingIds.includes(id)) return
+    setAcknowledgingIds(prev => [...prev, id])
+    setTimeout(() => {
+      handleAcknowledge(id, tabType)
+      setAcknowledgingIds(prev => prev.filter(x => x !== id))
+    }, 600)
+  }
 
   useEffect(() => {
     const updateIndicator = () => {
@@ -57,9 +67,27 @@ export default function DashboardTabs() {
         pendingUsers = []
       }
 
+      // Fetch real system audit logs
+      let auditLogs = []
+      try {
+        const auditLogsRes = await getWithCache('/analytics/audit-logs')
+        auditLogs = auditLogsRes.data || []
+      } catch (e) {
+        console.error('Failed to load audit logs:', e)
+      }
+
+      // Fetch acknowledged notifications list from backend db
+      let acknowledgedIds = []
+      try {
+        const acksRes = await api.get('/analytics/acknowledged')
+        acknowledgedIds = acksRes.data || []
+      } catch (e) {
+        console.error('Failed to load acknowledgments from DB, falling back to local:', e)
+        acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
+      }
+
       // Process notifications: Pending approvals + Overdue orders
       const now = new Date()
-      const acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
       const notificationsList = [
         ...pendingUsers.map(user => ({
           id: `approval-${user.id}`,
@@ -83,16 +111,38 @@ export default function DashboardTabs() {
       ].filter(n => !acknowledgedIds.includes(n.id))
       setNotifications(notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)))
 
-      // Process activities: Recent order status changes (mock - in production would come from audit logs)
-      const activitiesList = orders.map(o => ({
-        id: `activity-${o.id}`,
-        orderId: o.id,
-        type: 'order_update',
-        title: `Order ${o.order_status.toLowerCase()}`,
-        message: `${o.customer_name} - ${o.order_number}`,
-        timestamp: o.updated_at,
-        action: o.order_status
-      })).filter(act => !acknowledgedIds.includes(act.id)).slice(0, 10)
+      // Process activities from actual audit logs
+      const activitiesList = auditLogs.map(log => {
+        let detailsObj = null
+        try {
+          detailsObj = typeof log.details === 'string' ? JSON.parse(log.details) : log.details
+        } catch (e) {}
+
+        const actionText = detailsObj?.action || log.action.replace(/_/g, ' ')
+        
+        let message = `Record #${log.record_id} in ${log.table_name}`
+        if (log.table_name === 'orders') {
+          const snap = detailsObj?.state_snapshot
+          if (snap) {
+            message = `Order ${snap.order_number || ('ID ' + log.record_id)} for ${snap.customer_name || 'Customer'}`
+          } else {
+            message = `Order ID ${log.record_id}`
+          }
+        } else if (log.table_name === 'customers') {
+          const snap = detailsObj?.state_snapshot
+          message = `Customer ${snap?.name || ('ID ' + log.record_id)}`
+        }
+
+        return {
+          id: `activity-${log.id}`,
+          orderId: log.table_name === 'orders' ? log.record_id : null,
+          type: 'audit_log',
+          title: `${actionText} by ${log.user_name || 'Operator'}`,
+          message: message,
+          timestamp: log.timestamp,
+          action: log.action
+        }
+      }).filter(act => !acknowledgedIds.includes(act.id)).slice(0, 10)
       setActivities(activitiesList)
 
       // Scheduled Deliveries: Orders with future expected delivery times
@@ -119,12 +169,8 @@ export default function DashboardTabs() {
     }
   }
 
-  const handleAcknowledge = (id, tabType) => {
-    const acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
-    if (!acknowledgedIds.includes(id)) {
-      const updated = [...acknowledgedIds, id]
-      localStorage.setItem('acknowledged_notifications', JSON.stringify(updated))
-    }
+  const handleAcknowledge = async (id, tabType) => {
+    // 1. Update local state immediately for instant feedback
     if (tabType === 'notifications') {
       setNotifications(prev => prev.filter(n => n.id !== id))
     } else if (tabType === 'activities') {
@@ -134,6 +180,22 @@ export default function DashboardTabs() {
     } else if (tabType === 'pending') {
       setPendingIssues(prev => prev.filter(o => o.uniqueId !== id))
     }
+
+    // 2. Post to backend DB
+    try {
+      await api.post('/analytics/acknowledge', { notification_id: id })
+    } catch (e) {
+      console.error('Failed to save acknowledgment to database:', e)
+    }
+
+    // 3. Also save to localStorage as a fallback
+    try {
+      const acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
+      if (!acknowledgedIds.includes(id)) {
+        const updated = [...acknowledgedIds, id]
+        localStorage.setItem('acknowledged_notifications', JSON.stringify(updated))
+      }
+    } catch (e) {}
   }
 
   const tabs = [
@@ -179,7 +241,7 @@ export default function DashboardTabs() {
                   <div
                     key={notif.id}
                     onClick={handleClick}
-                    className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
+                    className={`swipe-out-item ${acknowledgingIds.includes(notif.id) ? 'is-acknowledging' : ''} p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 cursor-pointer group`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -202,7 +264,7 @@ export default function DashboardTabs() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleAcknowledge(notif.id, 'notifications')
+                            triggerAcknowledgeAnimation(notif.id, 'notifications')
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
                         >
@@ -236,12 +298,12 @@ export default function DashboardTabs() {
                   <div
                     key={activity.id}
                     onClick={handleClick}
-                    className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
+                    className={`swipe-out-item ${acknowledgingIds.includes(activity.id) ? 'is-acknowledging' : ''} p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 cursor-pointer group`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-white capitalize group-hover:text-zinc-300 transition-colors">
-                          {activity.action}
+                        <h4 className="font-semibold text-white group-hover:text-zinc-300 transition-colors">
+                          {activity.title || activity.action}
                         </h4>
                         <p className="text-zinc-400 text-sm">{activity.message}</p>
                         <p className="text-zinc-500 text-[10px] font-semibold mt-2 text-zinc-500">
@@ -252,7 +314,7 @@ export default function DashboardTabs() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleAcknowledge(activity.id, 'activities')
+                            triggerAcknowledgeAnimation(activity.id, 'activities')
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
                         >
@@ -286,7 +348,7 @@ export default function DashboardTabs() {
                   <div
                     key={order.id}
                     onClick={handleClick}
-                    className="p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 transition-colors cursor-pointer group"
+                    className={`swipe-out-item ${acknowledgingIds.includes(order.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-zinc-800/50 border border-zinc-700 rounded-lg hover:border-zinc-600 cursor-pointer group`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -311,7 +373,7 @@ export default function DashboardTabs() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleAcknowledge(order.uniqueId, 'scheduled')
+                            triggerAcknowledgeAnimation(order.uniqueId, 'scheduled')
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
                         >
@@ -345,7 +407,7 @@ export default function DashboardTabs() {
                   <div
                     key={order.id}
                     onClick={handleClick}
-                    className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 transition-colors cursor-pointer group"
+                    className={`swipe-out-item ${acknowledgingIds.includes(order.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:border-red-500/40 cursor-pointer group`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -366,7 +428,7 @@ export default function DashboardTabs() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleAcknowledge(order.uniqueId, 'pending')
+                            triggerAcknowledgeAnimation(order.uniqueId, 'pending')
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
                         >
@@ -390,6 +452,27 @@ export default function DashboardTabs() {
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+      <style>{`
+        .swipe-out-item {
+          transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease-out, max-height 0.3s ease-out 0.25s, padding 0.3s ease-out 0.25s, margin 0.3s ease-out 0.25s, border-width 0.3s ease-out 0.25s;
+          max-height: 250px;
+          opacity: 1;
+          transform: translateX(0);
+        }
+        .swipe-out-item.is-acknowledging {
+          transform: translateX(120%);
+          opacity: 0;
+          max-height: 0 !important;
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+          margin-top: 0 !important;
+          margin-bottom: 0 !important;
+          border-top-width: 0 !important;
+          border-bottom-width: 0 !important;
+          pointer-events: none;
+          overflow: hidden;
+        }
+      `}</style>
       {/* Tab Headers */}
       <div className="flex border-b border-zinc-800 overflow-x-auto relative scrollbar-none">
         {tabs.map(tab => {
