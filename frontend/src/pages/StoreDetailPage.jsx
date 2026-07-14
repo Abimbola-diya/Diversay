@@ -42,6 +42,66 @@ import {
   Trash2
 } from 'lucide-react'
 
+const formatChartDate = (val, range) => {
+  if (!val || typeof val !== 'string') return '';
+  
+  if (val.includes('T')) {
+    const parts = val.split('T');
+    if (parts.length > 1) {
+      return parts[1].substring(0, 5);
+    }
+    return val;
+  }
+  
+  const dateParts = val.split('-');
+  if (dateParts.length === 3) {
+    const year = parseInt(dateParts[0], 10);
+    const month = parseInt(dateParts[1], 10) - 1;
+    const day = parseInt(dateParts[2], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
+      if (range === '90') {
+        return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
+      }
+      return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' });
+    }
+  }
+  return val;
+};
+
+const formatTooltipLabel = (val, range) => {
+  if (!val || typeof val !== 'string') return '';
+  
+  if (val.includes('T')) {
+    const parts = val.split('T');
+    const timeStr = parts.length > 1 ? parts[1].substring(0, 5) : '';
+    const dateParts = parts[0].split('-');
+    if (dateParts.length === 3) {
+      const year = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10) - 1;
+      const day = parseInt(dateParts[2], 10);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        const formattedDate = d.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        return timeStr ? `${formattedDate} at ${timeStr}` : formattedDate;
+      }
+    }
+    return val;
+  }
+  
+  const dateParts = val.split('-');
+  if (dateParts.length === 3) {
+    const year = parseInt(dateParts[0], 10);
+    const month = parseInt(dateParts[1], 10) - 1;
+    const day = parseInt(dateParts[2], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+  }
+  return val;
+};
+
 export default function StoreDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -690,7 +750,7 @@ export default function StoreDetailPage() {
               </div>
               <div className={`flex-1 w-full h-[250px] transition-opacity duration-200 ${movementLoading ? 'opacity-40' : 'opacity-100'}`}>
                 {analytics.movement_data && analytics.movement_data.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={250}>
                     <AreaChart data={analytics.movement_data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorIncoming" x1="0" y1="0" x2="0" y2="1">
@@ -708,15 +768,7 @@ export default function StoreDetailPage() {
                         stroke="#71717a" 
                         fontSize={9} 
                         tickLine={false}
-                        tickFormatter={(val) => {
-                          const d = val && val.includes('T') ? new Date(val) : new Date(val + 'T00:00:00')
-                          if (isNaN(d.getTime())) return val
-                          if (movementRange === '1') {
-                            return d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
-                          }
-                          if (movementRange === '90') return d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
-                          return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' })
-                        }}
+                        tickFormatter={(val) => formatChartDate(val, movementRange)}
                         interval={movementRange === '90' ? 6 : movementRange === '30' ? 2 : 0}
                       />
                       <YAxis stroke="#71717a" fontSize={9} tickLine={false} />
@@ -724,15 +776,7 @@ export default function StoreDetailPage() {
                         contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px' }}
                         labelStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
                         itemStyle={{ color: '#ffffff', fontSize: '11px' }}
-                        labelFormatter={(val) => {
-                          const d = val && val.includes('T') ? new Date(val) : new Date(val + 'T00:00:00')
-                          if (isNaN(d.getTime())) return val
-                          if (movementRange === '1') {
-                            return d.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + 
-                                   ' at ' + d.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })
-                          }
-                          return d.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-                        }}
+                        labelFormatter={(val) => formatTooltipLabel(val, movementRange)}
                       />
                       <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }} />
                       <Area name="Incoming Units (Received)" type="monotone" dataKey="incoming" stroke="#10b981" fillOpacity={1} fill="url(#colorIncoming)" strokeWidth={2} />
