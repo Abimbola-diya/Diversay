@@ -107,6 +107,14 @@ export const invalidateCache = (url, config = {}) => {
     ? `${url}?${new URLSearchParams(config.params).toString()}` 
     : url
   memoryCache.delete(cacheKey)
+
+  // Also clear any cache keys that start with the target URL or URL with query params
+  // to avoid stale query pagination caches (e.g., /customers?limit=1000)
+  for (const key of memoryCache.keys()) {
+    if (key === url || key.startsWith(`${url}?`) || key.startsWith(`${url}/`)) {
+      memoryCache.delete(key)
+    }
+  }
 }
 
 export const updateCache = (url, data, config = {}) => {

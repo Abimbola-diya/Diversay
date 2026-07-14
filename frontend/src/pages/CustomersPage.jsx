@@ -254,7 +254,14 @@ export default function CustomersPage() {
         if (!_cachedCustomers) {
           setLoading(true)
         }
-        const response = await getWithCache('/customers', { params: { limit: 1000 } })
+        const response = await getWithCache('/customers', { 
+          params: { limit: 1000 },
+          onCacheUpdate: (newData) => {
+            const items = newData.items || newData || []
+            setCustomers(items)
+            _cachedCustomers = items
+          }
+        })
         const items = response.data.items || response.data || []
         setCustomers(items)
         setError(null)

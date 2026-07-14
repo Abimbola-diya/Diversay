@@ -28,7 +28,10 @@ export default function ManageCustomersPage() {
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [visibleCount, setVisibleCount] = useState(50)
+  const [deletingIds, setDeletingIds] = useState([])
 
   // Access Gateway Modal
   const [showAccessGateway, setShowAccessGateway] = useState(false)
@@ -62,7 +65,13 @@ export default function ManageCustomersPage() {
       if (forceRefresh) {
         invalidateCache('/customers')
       }
-      const response = await getWithCache('/customers', { params: { limit: 1000 } })
+      const response = await getWithCache('/customers', { 
+        params: { limit: 1000 },
+        onCacheUpdate: (newData) => {
+          const items = newData.items || newData || []
+          setCustomers(items)
+        }
+      })
       const items = response.data.items || response.data || []
       setCustomers(items)
       setError(null)
@@ -92,6 +101,38 @@ export default function ManageCustomersPage() {
     )
   }, [customers, searchQuery])
 
+  // Debounce search input to avoid keyboard lag when typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchInput)
+    }, 150) // 150ms delay is ideal for lag-free typing experience
+    return () => clearTimeout(handler)
+  }, [searchInput])
+
+  // Reset visibleCount when search query changes
+  useEffect(() => {
+    setVisibleCount(50)
+  }, [searchQuery])
+
+  // Infinite scroll intersection observer to dynamically render additional rows
+  useEffect(() => {
+    if (filteredCustomers.length <= visibleCount) return
+
+    const sentinel = document.getElementById('load-more-sentinel')
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount(prev => prev + 50)
+      }
+    }, {
+      rootMargin: '200px' // Load ahead of time for smooth scrolling
+    })
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [filteredCustomers, visibleCount])
+
   // Open add modal
   const handleOpenAddModal = () => {
     if (!hasWriteAccess) {
@@ -118,7 +159,7 @@ export default function ManageCustomersPage() {
     setSavingCustomer(true)
     setAddError('')
     try {
-      await api.post('/customers/', {
+      const response = await api.post('/customers/', {
         name: addName.trim(),
         address: addAddress.trim() || null,
         city: addCity.trim() || null,
@@ -126,9 +167,15 @@ export default function ManageCustomersPage() {
         contact_number: addContact.trim() || null,
         email: addEmail.trim() || null
       })
-      // Clear cache & fetch again
-      await fetchCustomers(true)
+      const createdCustomer = response.data
+      
+      // Snappy updates: immediately append new customer to local state and close modal
+      setCustomers(prev => [createdCustomer, ...prev])
       setShowAddModal(false)
+
+      // Invalidate cache and fetch database silently in the background
+      invalidateCache('/customers')
+      fetchCustomers()
     } catch (err) {
       console.error('Failed to create customer:', err)
       setAddError(err.response?.data?.detail || 'Failed to save customer. Please check input.')
@@ -164,7 +211,7 @@ export default function ManageCustomersPage() {
     setSavingEdit(true)
     setEditError('')
     try {
-      await api.put(`/customers/${editingCustomer.id}`, {
+      const response = await api.put(`/customers/${editingCustomer.id}`, {
         name: editName.trim(),
         address: editAddress.trim() || null,
         city: editCity.trim() || null,
@@ -172,9 +219,15 @@ export default function ManageCustomersPage() {
         contact_number: editContact.trim() || null,
         email: editEmail.trim() || null
       })
-      // Clear cache & fetch again
-      await fetchCustomers(true)
+      const updatedCustomer = response.data
+      
+      // Snappy updates: immediately modify local state and close modal
+      setCustomers(prev => prev.map(c => c.id === editingCustomer.id ? { ...c, ...updatedCustomer } : c))
       setShowEditModal(false)
+
+      // Invalidate cache and fetch database silently in the background
+      invalidateCache('/customers')
+      fetchCustomers()
     } catch (err) {
       console.error('Failed to edit customer:', err)
       setEditError(err.response?.data?.detail || 'Failed to edit customer. Please check input.')
@@ -192,11 +245,26 @@ export default function ManageCustomersPage() {
     if (!window.confirm(`Are you sure you want to delete ${customer.name}? This will remove them from active customers.`)) {
       return
     }
+
+    // Add to deletingIds to trigger swipe out animation
+    setDeletingIds(prev => [...prev, customer.id])
+
     try {
       await api.delete(`/customers/${customer.id}`)
-      // Clear cache & fetch again
-      await fetchCustomers(true)
+      
+      // Wait for the swipe-out transition (400ms)
+      await new Promise(resolve => setTimeout(resolve, 400))
+      
+      // Update local state to remove customer
+      setCustomers(prev => prev.filter(c => c.id !== customer.id))
+      setDeletingIds(prev => prev.filter(id => id !== customer.id))
+
+      // Invalidate cache and fetch database silently in background
+      invalidateCache('/customers')
+      fetchCustomers()
     } catch (err) {
+      // Restore row if API fails
+      setDeletingIds(prev => prev.filter(id => id !== customer.id))
       console.error('Failed to delete customer:', err)
       alert(err.response?.data?.detail || 'Failed to delete customer.')
     }
@@ -204,6 +272,23 @@ export default function ManageCustomersPage() {
 
   return (
     <div className="animate-in fade-in duration-300 space-y-6">
+      <style>{`
+        .row-swipe-delete {
+          transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease-out;
+        }
+        .row-swipe-delete.deleting {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        .row-swipe-delete.deleting td {
+          padding-top: 0 !important;
+          padding-bottom: 0 !important;
+          height: 0 !important;
+          line-height: 0 !important;
+          border-bottom-width: 0 !important;
+          transition: padding 0.4s ease-in-out, height 0.4s ease-in-out;
+        }
+      `}</style>
       {/* Navigation and Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -255,8 +340,8 @@ export default function ManageCustomersPage() {
           <input
             type="text"
             placeholder="Search by name, state, city, contact info or address..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="w-full bg-zinc-950/60 border border-zinc-850 hover:border-zinc-700 focus:border-zinc-600 text-zinc-200 text-sm rounded-xl pl-11 pr-4 py-2.5 focus:outline-none transition-colors"
           />
         </div>
@@ -299,72 +384,86 @@ export default function ManageCustomersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-850">
-                {filteredCustomers.map((c) => (
-                  <tr key={c.id} className="hover:bg-zinc-850/15 transition-all duration-155">
-                    <td className="px-6 py-4">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700/50 flex items-center justify-center text-zinc-400 shrink-0">
-                          <Building size={16} />
+                {filteredCustomers.slice(0, visibleCount).map((c) => {
+                  const isDeleting = deletingIds.includes(c.id)
+                  return (
+                    <tr 
+                      key={c.id} 
+                      className={`row-swipe-delete hover:bg-zinc-850/15 transition-all duration-155 ${
+                        isDeleting ? 'deleting' : ''
+                      }`}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700/50 flex items-center justify-center text-zinc-400 shrink-0">
+                            <Building size={16} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-white uppercase tracking-tight">{c.name}</p>
+                            {c.address && (
+                              <p className="text-xs text-zinc-450 mt-1 flex items-start gap-1 leading-relaxed">
+                                <MapPin size={12} className="shrink-0 mt-0.5 text-zinc-600" />
+                                <span>{c.address}{c.city ? `, ${c.city}` : ''}</span>
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-bold text-white uppercase tracking-tight">{c.name}</p>
-                          {c.address && (
-                            <p className="text-xs text-zinc-450 mt-1 flex items-start gap-1 leading-relaxed">
-                              <MapPin size={12} className="shrink-0 mt-0.5 text-zinc-600" />
-                              <span>{c.address}{c.city ? `, ${c.city}` : ''}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 border border-zinc-750 text-xs font-semibold text-zinc-300 rounded-lg uppercase">
+                          <MapPin size={11} className="text-zinc-550" />
+                          {c.state || 'Unspecified'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-1.5 text-xs text-zinc-350">
+                          {c.contact_number && (
+                            <p className="flex items-center gap-1.5 font-mono">
+                              <Phone size={12} className="text-zinc-650 shrink-0" />
+                              <span>{c.contact_number}</span>
                             </p>
                           )}
+                          {c.email && (
+                            <p className="flex items-center gap-1.5 font-mono">
+                              <Mail size={12} className="text-zinc-650 shrink-0" />
+                              <span className="truncate max-w-[180px]">{c.email}</span>
+                            </p>
+                          )}
+                          {!c.contact_number && !c.email && (
+                            <span className="text-zinc-600 italic">No contact details</span>
+                          )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 border border-zinc-750 text-xs font-semibold text-zinc-300 rounded-lg uppercase">
-                        <MapPin size={11} className="text-zinc-550" />
-                        {c.state || 'Unspecified'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1.5 text-xs text-zinc-350">
-                        {c.contact_number && (
-                          <p className="flex items-center gap-1.5 font-mono">
-                            <Phone size={12} className="text-zinc-650 shrink-0" />
-                            <span>{c.contact_number}</span>
-                          </p>
-                        )}
-                        {c.email && (
-                          <p className="flex items-center gap-1.5 font-mono">
-                            <Mail size={12} className="text-zinc-650 shrink-0" />
-                            <span className="truncate max-w-[180px]">{c.email}</span>
-                          </p>
-                        )}
-                        {!c.contact_number && !c.email && (
-                          <span className="text-zinc-600 italic">No contact details</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenEditModal(c)}
-                          className="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg border border-transparent hover:border-zinc-700 transition-all duration-200"
-                          title="Edit Customer"
-                        >
-                          <Edit3 size={15} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCustomer(c)}
-                          className="p-2 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 rounded-lg border border-transparent hover:border-red-500/25 transition-all duration-200"
-                          title="Delete Customer"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleOpenEditModal(c)}
+                            className="p-2 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg border border-transparent hover:border-zinc-700 transition-all duration-200"
+                            title="Edit Customer"
+                          >
+                            <Edit3 size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCustomer(c)}
+                            className="p-2 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 rounded-lg border border-transparent hover:border-red-500/25 transition-all duration-200"
+                            title="Delete Customer"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
+          {filteredCustomers.length > visibleCount && (
+            <div id="load-more-sentinel" className="flex items-center justify-center gap-2 py-6 bg-zinc-950/20 border-t border-zinc-850 text-zinc-500 text-xs font-semibold">
+              <Loader2 size={14} className="animate-spin text-zinc-550" />
+              Loading more customers...
+            </div>
+          )}
         </div>
       )}
 
