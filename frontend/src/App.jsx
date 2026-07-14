@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage'
 import OrdersPage from './pages/OrdersPage'
 import OrderDetailPage from './pages/OrderDetailPage'
 import CustomersPage from './pages/CustomersPage'
+import ManageCustomersPage from './pages/ManageCustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import StorePage from './pages/StorePage'
 import StoreDetailPage from './pages/StoreDetailPage'
@@ -33,6 +34,7 @@ function App() {
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/orders/:id" element={<OrderDetailPage />} />
               <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/customers/view" element={<ManageCustomersPage />} />
               <Route path="/customers/:id" element={<CustomerDetailPage />} />
               <Route path="/weekly-customers" element={<WeeklyCustomersPage />} />
               <Route path="/store" element={<StorePage />} />

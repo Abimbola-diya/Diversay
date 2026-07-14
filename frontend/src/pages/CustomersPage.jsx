@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api, { getWithCache, isCached } from '../services/api'
+import api, { getWithCache, isCached, invalidateCache } from '../services/api'
 import { STATE_CENTROIDS, NIGERIA_MAP_PATHS } from '../components/NigeriaMap'
+import { useAuth } from '../hooks/useAuth'
+import AccessGatewayModal from '../components/AccessGatewayModal'
 import { 
   Search, 
   Users, 
@@ -13,7 +15,10 @@ import {
   Globe, 
   TrendingUp, 
   ChevronRight,
-  Info
+  Info,
+  Plus,
+  X,
+  Loader2
 } from 'lucide-react'
 
 // Normalize state names from DB to match SVG path IDs
@@ -106,9 +111,87 @@ let _cachedCustomers = null
 
 export default function CustomersPage() {
   const navigate = useNavigate()
+  const { hasWriteAccess } = useAuth()
   const [customers, setCustomers] = useState(() => _cachedCustomers ?? [])
   const [loading, setLoading] = useState(() => !_cachedCustomers)
   const [error, setError] = useState(null)
+
+  // Access Gateway Modal
+  const [showAccessGateway, setShowAccessGateway] = useState(false)
+
+  // Add Customer Modal States
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [addName, setAddName] = useState('')
+  const [addAddress, setAddAddress] = useState('')
+  const [addCity, setAddCity] = useState('')
+  const [addState, setAddState] = useState('')
+  const [addContact, setAddContact] = useState('')
+  const [addEmail, setAddEmail] = useState('')
+  const [modalError, setModalError] = useState('')
+  const [savingCustomer, setSavingCustomer] = useState(false)
+
+  // Reload customers from DB
+  const reloadCustomers = async () => {
+    try {
+      const response = await api.get('/customers', { params: { limit: 1000 } })
+      const items = response.data.items || response.data || []
+      setCustomers(items)
+      _cachedCustomers = items
+    } catch (err) {
+      console.error('Failed to reload customers:', err)
+    }
+  }
+
+  // Open add customer modal
+  const handleOpenAddCustomerModal = () => {
+    if (!hasWriteAccess) {
+      setShowAccessGateway(true)
+      return
+    }
+    setAddName('')
+    setAddAddress('')
+    setAddCity('')
+    setAddState('')
+    setAddContact('')
+    setAddEmail('')
+    setModalError('')
+    setShowAddModal(true)
+  }
+
+  // Submit new customer form
+  const handleAddCustomerSubmit = async (e) => {
+    e.preventDefault()
+    if (!addName.trim()) {
+      setModalError('Customer name is required')
+      return
+    }
+    setSavingCustomer(true)
+    setModalError('')
+    try {
+      await api.post('/customers/', {
+        name: addName.trim(),
+        address: addAddress.trim() || null,
+        city: addCity.trim() || null,
+        state: addState.trim() || null,
+        contact_number: addContact.trim() || null,
+        email: addEmail.trim() || null,
+      })
+
+      // Invalidate cache
+      invalidateCache('/customers')
+      
+      // Reload local customer list
+      await reloadCustomers()
+      
+      // Close modal
+      setShowAddModal(false)
+    } catch (err) {
+      console.error('Failed to create customer:', err)
+      setModalError(err.response?.data?.detail || 'Failed to save customer. Please try again.')
+    } finally {
+      setSavingCustomer(false)
+    }
+  }
   
   // Search query & interaction states
   const [searchQuery, setSearchQuery] = useState('')
@@ -345,7 +428,7 @@ export default function CustomersPage() {
       `}</style>
 
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 flex-shrink-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 flex-shrink-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
             <Globe className="text-zinc-400 w-8 h-8 animate-pulse" />
@@ -354,6 +437,23 @@ export default function CustomersPage() {
           <p className="text-sm text-zinc-400 mt-1">
             Visual distribution of Diversay logistics customers across Nigeria
           </p>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => navigate('/customers/view')}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-zinc-200 hover:text-white rounded-xl transition-all duration-200 active:scale-[0.97]"
+          >
+            <Users size={14} />
+            View Customers
+          </button>
+          <button
+            onClick={handleOpenAddCustomerModal}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-white/10 hover:bg-white/15 border border-white/20 text-xs font-bold text-white rounded-xl transition-all duration-200 active:scale-[0.97]"
+          >
+            <Plus size={14} />
+            Add Customer
+          </button>
         </div>
       </div>
 
@@ -816,6 +916,154 @@ export default function CustomersPage() {
 
           </div>
 
+        </div>
+      )}
+
+      {/* Access Gateway Modal for viewers */}
+      <AccessGatewayModal
+        isOpen={showAccessGateway}
+        onClose={() => setShowAccessGateway(false)}
+      />
+
+      {/* Add Customer Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div 
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={() => setShowAddModal(false)}
+          />
+          <div className="relative bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/40">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Users size={16} className="text-zinc-400" />
+                Add New Customer
+              </h3>
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-zinc-800 transition-all"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddCustomerSubmit} className="p-6 space-y-4">
+              {modalError && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2.5 rounded-xl text-xs font-semibold">
+                  ⚠️ {modalError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                  Customer Name *
+                </label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="e.g. Acme Logistics Nigeria"
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-zinc-700 transition-colors text-sm font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    State
+                  </label>
+                  <select
+                    value={addState}
+                    onChange={(e) => setAddState(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm cursor-pointer font-semibold"
+                  >
+                    <option value="">Select State</option>
+                    {Object.entries(STATE_CENTROIDS).map(([key, val]) => (
+                      <option key={key} value={val.label}>
+                        {val.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    City
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Ikeja"
+                    value={addCity}
+                    onChange={(e) => setAddCity(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-655 focus:outline-none focus:border-zinc-700 transition-colors text-sm font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                  Address
+                </label>
+                <input 
+                  type="text"
+                  placeholder="e.g. 12 Allen Avenue"
+                  value={addAddress}
+                  onChange={(e) => setAddAddress(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-655 focus:outline-none focus:border-zinc-700 transition-colors text-sm font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Contact Number
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. +234 803..."
+                    value={addContact}
+                    onChange={(e) => setAddContact(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-655 focus:outline-none focus:border-zinc-700 transition-colors text-sm font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Email Address
+                  </label>
+                  <input 
+                    type="email"
+                    placeholder="e.g. contact@acme.ng"
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-655 focus:outline-none focus:border-zinc-700 transition-colors text-sm font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-zinc-800/80">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 border border-zinc-800 hover:bg-zinc-800 text-zinc-350 hover:text-white font-semibold rounded-xl transition-all duration-200 text-xs active:scale-[0.97]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCustomer}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/35 hover:border-emerald-500/50 font-bold rounded-xl transition-all duration-200 text-xs active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingCustomer ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Customer'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
