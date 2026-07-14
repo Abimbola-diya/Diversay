@@ -629,9 +629,9 @@ export default function StoreDetailPage() {
                               <Cell fill="#0ea5e9" />
                               <Cell fill="#a855f7" />
                             </Pie>
-                            <Tooltip
+                             <Tooltip
                               contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px' }}
-                              itemStyle={{ fontSize: '11px' }}
+                              itemStyle={{ color: '#ffffff', fontSize: '11px' }}
                             />
                           </PieChart>
                         </ResponsiveContainer>
@@ -723,7 +723,7 @@ export default function StoreDetailPage() {
                       <Tooltip
                         contentStyle={{ backgroundColor: '#09090b', borderColor: '#27272a', borderRadius: '8px' }}
                         labelStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
-                        itemStyle={{ fontSize: '11px' }}
+                        itemStyle={{ color: '#ffffff', fontSize: '11px' }}
                         labelFormatter={(val) => {
                           const d = val && val.includes('T') ? new Date(val) : new Date(val + 'T00:00:00')
                           if (isNaN(d.getTime())) return val
