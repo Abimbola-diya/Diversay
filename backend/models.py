@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Float, Enum, Text, Table, JSON, Index
 from sqlalchemy.orm import relationship
-from database import Base
+from .database import Base
 from datetime import datetime
 import enum
 
@@ -28,6 +28,7 @@ class UnitType(str, enum.Enum):
     PCS = "Pcs"
     DRUM = "Drum"
     BOTTLE = "Bottle"
+    SACHET = "Sachet"
 
 class ActionType(str, enum.Enum):
     CREATE = "create"
