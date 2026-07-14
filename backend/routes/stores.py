@@ -127,6 +127,7 @@ def get_store_inventory(
             "default_unit": inv.product.default_unit.value,
             "product_brand": inv.product.brand,
             "stock": inv.stock,
+            "reorder_level": inv.reorder_level,
             "unit_price": inv.product.unit_price
         })
         
@@ -140,7 +141,7 @@ def update_store_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(check_write_access)
 ):
-    """Update stock level for a product at a specific store (admin only)."""
+    """Update stock level or reorder level for a product at a specific store (admin only)."""
     store = db.query(Store).filter(Store.id == store_id, Store.is_deleted == False).first()
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
@@ -155,10 +156,18 @@ def update_store_inventory(
     ).first()
     
     if not inv:
-        inv = StoreInventory(store_id=store_id, product_id=product_id, stock=inventory_update.stock)
+        inv = StoreInventory(
+            store_id=store_id, 
+            product_id=product_id, 
+            stock=inventory_update.stock if inventory_update.stock is not None else 0.0,
+            reorder_level=inventory_update.reorder_level if inventory_update.reorder_level is not None else 15.0
+        )
         db.add(inv)
     else:
-        inv.stock = inventory_update.stock
+        if inventory_update.stock is not None:
+            inv.stock = inventory_update.stock
+        if inventory_update.reorder_level is not None:
+            inv.reorder_level = inventory_update.reorder_level
         
     db.commit()
     db.refresh(inv)
@@ -172,6 +181,7 @@ def update_store_inventory(
         "default_unit": product.default_unit.value,
         "product_brand": product.brand,
         "stock": inv.stock,
+        "reorder_level": inv.reorder_level,
         "unit_price": product.unit_price
     }
 

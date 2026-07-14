@@ -169,7 +169,7 @@ def create_order(
                 db.add(src_inv)
             src_inv.stock -= item.quantity
             
-        # Crediting stock to destination store
+        # Crediting/debiting stock to destination store
         if order_create.destination_store_id:
             dest_inv = db.query(StoreInventory).filter(
                 StoreInventory.store_id == order_create.destination_store_id,
@@ -182,7 +182,15 @@ def create_order(
                     stock=0.0
                 )
                 db.add(dest_inv)
+            
+            # Credit the destination (regional) store
             dest_inv.stock += item.quantity
+            
+            # If source store is central, then this is a 3-node supply: Central -> Regional -> Customer.
+            # In a 3-node supply, the regional store receives it (+quantity) and then ships it to customer (-quantity).
+            source_store = db.query(Store).filter(Store.id == order_create.source_store_id).first()
+            if source_store and source_store.is_central:
+                dest_inv.stock -= item.quantity
     
     db.flush()
     

@@ -166,6 +166,7 @@ class StoreInventory(Base):
     store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     stock = Column(Float, default=0.0, nullable=False)
+    reorder_level = Column(Float, default=15.0, nullable=False)
     
     store = relationship("Store", backref="inventories")
     product = relationship("Product", backref="store_inventories")

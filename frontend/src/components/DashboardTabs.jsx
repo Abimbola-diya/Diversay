@@ -100,6 +100,20 @@ export default function DashboardTabs() {
         console.error('Failed to load audit logs:', e)
       }
 
+      // Fetch low-stock items for alerts
+      let lowStockItems = []
+      try {
+        let lowStockRes
+        if (force) {
+          lowStockRes = await api.get('/analytics/low-stock')
+        } else {
+          lowStockRes = await getWithCache('/analytics/low-stock')
+        }
+        lowStockItems = lowStockRes.data || []
+      } catch (e) {
+        console.error('Failed to load low-stock items:', e)
+      }
+
       // Fetch acknowledged notifications list from backend db
       let acknowledgedIds = []
       try {
@@ -110,7 +124,7 @@ export default function DashboardTabs() {
         acknowledgedIds = JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]')
       }
 
-      // Process notifications: Pending approvals + Overdue orders
+      // Process notifications: Pending approvals + Overdue orders + Low-stock items
       const now = new Date()
       const notificationsList = [
         ...pendingUsers.map(user => ({
@@ -131,7 +145,16 @@ export default function DashboardTabs() {
             timestamp: o.expected_delivery_time,
             priority: 'high',
             order: o
-          }))
+          })),
+        ...lowStockItems.map(item => ({
+          id: item.id,
+          type: 'lowstock',
+          title: 'Low Stock Alert',
+          message: `${item.product_name} remains ${item.stock} ${item.unit.toLowerCase()}(s) in ${item.store_name} (threshold: ${item.reorder_level})`,
+          timestamp: item.updated_at,
+          priority: 'high',
+          storeId: item.store_id
+        }))
       ].filter(n => !acknowledgedIds.includes(n.id))
       setNotifications(notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)))
 
@@ -259,6 +282,8 @@ export default function DashboardTabs() {
                     navigate('/admin/approvals')
                   } else if (notif.type === 'delayed' && notif.order?.id) {
                     navigate(`/orders/${notif.order.id}`)
+                  } else if (notif.type === 'lowstock' && notif.storeId) {
+                    navigate(`/stores/${notif.storeId}`)
                   }
                 }
                 return (

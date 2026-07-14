@@ -302,13 +302,15 @@ class StoreInventoryResponse(BaseModel):
     default_unit: str
     product_brand: str
     stock: float
+    reorder_level: float
     unit_price: float
     
     class Config:
         from_attributes = True
 
 class StoreInventoryUpdate(BaseModel):
-    stock: float
+    stock: Optional[float] = None
+    reorder_level: Optional[float] = None
 
 
 class AcknowledgeRequest(BaseModel):

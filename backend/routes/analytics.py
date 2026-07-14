@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
-from models import User, Order, OrderLineItem, Customer, OrderStatus, AuditLog, NotificationAcknowledgment
+from models import User, Order, OrderLineItem, Customer, OrderStatus, AuditLog, NotificationAcknowledgment, StoreInventory, Product, Store
 from schemas import DashboardMetrics, StatusBreakdown, StateMetrics, OrderMetrics, AuditLogResponse, AcknowledgeRequest
 from auth import get_current_user, check_admin
 from utils import calculate_order_status, calculate_hours_overdue
@@ -188,4 +188,32 @@ def acknowledge_notification(
         db.commit()
     
     return {"status": "success"}
+
+
+@router.get("/low-stock")
+def get_low_stock_items(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieve all store inventory items that are below their reorder level."""
+    low_stock = db.query(StoreInventory).join(Product).join(Store).filter(
+        StoreInventory.stock < StoreInventory.reorder_level,
+        Product.is_deleted == False,
+        Store.is_deleted == False
+    ).all()
+    
+    return [
+        {
+            "id": f"lowstock-{item.store_id}-{item.product_id}",
+            "store_id": item.store_id,
+            "store_name": item.store.name,
+            "product_id": item.product_id,
+            "product_name": item.product.name,
+            "stock": item.stock,
+            "reorder_level": item.reorder_level,
+            "unit": item.product.default_unit.value,
+            "updated_at": item.store.updated_at.isoformat() if item.store.updated_at else datetime.utcnow().isoformat()
+        }
+        for item in low_stock
+    ]
 

@@ -60,6 +60,7 @@ export default function StoreDetailPage() {
   
   const [adjustItem, setAdjustItem] = useState(null)
   const [adjustValue, setAdjustValue] = useState('')
+  const [adjustReorderLevel, setAdjustReorderLevel] = useState('')
   const [updating, setUpdating] = useState(false)
   const [error, setError] = useState('')
 
@@ -141,9 +142,9 @@ export default function StoreDetailPage() {
 
     // Stock state filter
     if (filterStock === 'in') {
-      result = result.filter(item => item.stock > 15)
+      result = result.filter(item => item.stock > (item.reorder_level ?? 15.0))
     } else if (filterStock === 'low') {
-      result = result.filter(item => item.stock > 0 && item.stock <= 15)
+      result = result.filter(item => item.stock > 0 && item.stock <= (item.reorder_level ?? 15.0))
     } else if (filterStock === 'out') {
       result = result.filter(item => item.stock === 0)
     }
@@ -171,7 +172,7 @@ export default function StoreDetailPage() {
   const stats = useMemo(() => {
     const totalSKUs = inventory.length
     const totalStock = inventory.reduce((sum, item) => sum + item.stock, 0)
-    const lowStockCount = inventory.filter(item => item.stock > 0 && item.stock <= 15).length
+    const lowStockCount = inventory.filter(item => item.stock > 0 && item.stock <= (item.reorder_level ?? 15.0)).length
     const outOfStockCount = inventory.filter(item => item.stock === 0).length
 
     return { totalSKUs, totalStock, lowStockCount, outOfStockCount }
@@ -181,21 +182,30 @@ export default function StoreDetailPage() {
   const handleOpenAdjust = (item) => {
     setAdjustItem(item)
     setAdjustValue(item.stock.toString())
+    setAdjustReorderLevel((item.reorder_level ?? 15.0).toString())
     setError('')
   }
 
   const handleSaveAdjust = async (e) => {
     e.preventDefault()
     const val = parseFloat(adjustValue)
+    const reorderVal = parseFloat(adjustReorderLevel)
     if (isNaN(val) || val < 0) {
       setError('Please enter a valid stock level >= 0')
+      return
+    }
+    if (isNaN(reorderVal) || reorderVal < 0) {
+      setError('Please enter a valid reorder level >= 0')
       return
     }
 
     try {
       setUpdating(true)
       setError('')
-      await api.put(`/stores/${id}/inventory/${adjustItem.product_id}`, { stock: val })
+      await api.put(`/stores/${id}/inventory/${adjustItem.product_id}`, { 
+        stock: val,
+        reorder_level: reorderVal
+      })
       invalidateCache(`/stores/${id}/inventory`)
       invalidateCache(`/stores/${id}/analytics`)
       fetchAnalytics()
@@ -203,7 +213,7 @@ export default function StoreDetailPage() {
       // Update local state directly
       setInventory(prev => prev.map(item => 
         item.product_id === adjustItem.product_id 
-          ? { ...item, stock: val } 
+          ? { ...item, stock: val, reorder_level: reorderVal } 
           : item
       ))
       setAdjustItem(null)
@@ -795,6 +805,7 @@ export default function StoreDetailPage() {
                   <th className="px-6 py-4">Product</th>
                   <th className="px-6 py-4">Category</th>
                   <th className="px-6 py-4 text-right">Stock Level</th>
+                  <th className="px-6 py-4 text-right">Reorder Level</th>
                   <th className="px-6 py-4">Status</th>
                   {hasWriteAccess && <th className="px-6 py-4 text-right">Actions</th>}
                 </tr>
@@ -802,7 +813,7 @@ export default function StoreDetailPage() {
               <tbody className="divide-y divide-zinc-800/50 text-sm">
                 {filteredInventory.map((item) => {
                   const isOut = item.stock === 0
-                  const isLow = item.stock > 0 && item.stock <= 15
+                  const isLow = item.stock > 0 && item.stock <= (item.reorder_level ?? 15.0)
                   
                   return (
                     <tr 
@@ -849,6 +860,12 @@ export default function StoreDetailPage() {
                         </span>
                         <span className="text-[10px] text-zinc-500 font-bold ml-1 uppercase">
                           {item.default_unit.toLowerCase()}{item.stock !== 1 ? 's' : ''}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right text-zinc-400 font-bold text-sm">
+                        <span>{item.reorder_level ?? 15.0}</span>
+                        <span className="text-[10px] text-zinc-500 font-bold ml-1 uppercase">
+                          {item.default_unit.toLowerCase()}{(item.reorder_level ?? 15.0) !== 1 ? 's' : ''}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -898,7 +915,7 @@ export default function StoreDetailPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filteredInventory.map((item) => {
             const isOut = item.stock === 0
-            const isLow = item.stock > 0 && item.stock <= 15
+            const isLow = item.stock > 0 && item.stock <= (item.reorder_level ?? 15.0)
             
             return (
               <div 
@@ -960,7 +977,7 @@ export default function StoreDetailPage() {
                 <div className="mt-5 pt-4 border-t border-zinc-800/80 flex items-center justify-between gap-2">
                   <div>
                     <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">In Registry</span>
-                    <span className={`text-base font-black
+                    <span className={`text-base font-black block
                       ${isOut 
                         ? 'text-red-400' 
                         : isLow 
@@ -968,6 +985,9 @@ export default function StoreDetailPage() {
                           : 'text-white'}`}
                     >
                       {item.stock} {item.default_unit.toLowerCase()}{item.stock !== 1 ? 's' : ''}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 font-medium block mt-0.5">
+                      Reorder: {item.reorder_level ?? 15.0} {item.default_unit.toLowerCase()}(s)
                     </span>
                   </div>
 
@@ -1022,7 +1042,7 @@ export default function StoreDetailPage() {
 
             <form onSubmit={handleSaveAdjust} className="space-y-4">
               <div>
-                <label className="block text-[11px] uppercase tracking-wider text-zinc-500 font-bold mb-1.5">
+                <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
                   Current Stock Level ({adjustItem.default_unit}s)
                 </label>
                 <input
@@ -1033,6 +1053,20 @@ export default function StoreDetailPage() {
                   placeholder="0"
                   className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none"
                   autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
+                  Reorder Level Threshold ({adjustItem.default_unit}s)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={adjustReorderLevel}
+                  onChange={(e) => setAdjustReorderLevel(e.target.value)}
+                  placeholder="15"
+                  className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none"
                 />
               </div>
 
