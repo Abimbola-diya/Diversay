@@ -758,8 +758,8 @@ export default function StoreDetailPage() {
                           <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                         </linearGradient>
                         <linearGradient id="colorOutgoing" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#ffffff" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#ffffff" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid stroke="#18181b" strokeDasharray="3 3" />
@@ -780,7 +780,7 @@ export default function StoreDetailPage() {
                       />
                       <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }} />
                       <Area name="Incoming Units (Received)" type="monotone" dataKey="incoming" stroke="#10b981" fillOpacity={1} fill="url(#colorIncoming)" strokeWidth={2} />
-                      <Area name="Outgoing Units (Dispatched)" type="monotone" dataKey="outgoing" stroke="#ef4444" fillOpacity={1} fill="url(#colorOutgoing)" strokeWidth={2} />
+                      <Area name="Outgoing Units (Dispatched)" type="monotone" dataKey="outgoing" stroke="#ffffff" fillOpacity={1} fill="url(#colorOutgoing)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
