@@ -454,25 +454,37 @@ export default function DashboardTabs() {
                   navigate(`/store/${issue.storeId}`)
                 }
                 
+                const isDepleted = issue.stock <= 0
+                const bgClass = isDepleted 
+                  ? 'bg-red-500/10 border-red-500/20 hover:border-red-500/40' 
+                  : 'bg-yellow-500/10 border-yellow-500/20 hover:border-yellow-500/40'
+                const textClass = isDepleted ? 'text-red-400 group-hover:text-red-300' : 'text-yellow-400 group-hover:text-yellow-300'
+                const badgeClass = isDepleted 
+                  ? 'bg-red-500/25 text-red-400 border border-red-500/30' 
+                  : 'bg-yellow-500/25 text-yellow-400 border border-yellow-500/30'
+                const titleText = isDepleted ? `Depleted: ${issue.product_name}` : `Low Stock: ${issue.product_name}`
+                const statusText = isDepleted ? 'Stock Depleted (Restock Immediate)' : 'Below Threshold (Plan Restock)'
+                const chevronColor = isDepleted ? 'text-red-500 group-hover:text-red-400' : 'text-yellow-500 group-hover:text-yellow-400'
+
                 return (
                   <div
                     key={issue.uniqueId}
                     onClick={handleClick}
-                    className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:border-amber-500/40 cursor-pointer group`}
+                    className={`swipe-out-item ${acknowledgingIds.includes(issue.uniqueId) ? 'is-acknowledging' : ''} p-4 border rounded-lg cursor-pointer group transition-all ${bgClass}`}
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-semibold text-amber-400 group-hover:text-amber-300 transition-colors">Low Stock: {issue.product_name}</h4>
-                          <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30 font-bold uppercase tracking-wider">
+                          <h4 className={`font-semibold transition-colors ${textClass}`}>{titleText}</h4>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${badgeClass}`}>
                             {issue.store_name}
                           </span>
                         </div>
                         <p className="text-zinc-400 text-sm font-medium">
                           {issue.product_name} remains {issue.stock} {issue.unit.toLowerCase()}(s) in {issue.store_name} (threshold: {issue.reorder_level})
                         </p>
-                        <p className="text-amber-400 text-xs mt-1.5 font-semibold">
-                          Status: <span className="font-bold">Urgent Restock Required</span>
+                        <p className={`text-xs mt-1.5 font-semibold ${textClass}`}>
+                          Status: <span className="font-bold">{statusText}</span>
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0 ml-4">
@@ -486,7 +498,7 @@ export default function DashboardTabs() {
                           <Check size={12} className="text-white" />
                           Acknowledge
                         </button>
-                        <ChevronRight size={20} className="text-amber-500 group-hover:text-amber-400" />
+                        <ChevronRight size={20} className={`transition-all ${chevronColor}`} />
                       </div>
                     </div>
                   </div>
