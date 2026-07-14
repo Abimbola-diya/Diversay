@@ -197,7 +197,7 @@ def get_low_stock_items(
 ):
     """Retrieve all store inventory items that are below their reorder level."""
     low_stock = db.query(StoreInventory).join(Product).join(Store).filter(
-        StoreInventory.stock < StoreInventory.reorder_level,
+        StoreInventory.stock <= StoreInventory.reorder_level,
         Product.is_deleted == False,
         Store.is_deleted == False
     ).all()
