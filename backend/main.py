@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routes import auth, customers, products, orders, analytics, stores
+from routes import auth, customers, products, orders, analytics, stores, drivers
 from config import get_settings
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -144,6 +144,22 @@ def seed_stores():
     finally:
         db.close()
 
+def seed_drivers():
+    from models import Driver
+    db = SessionLocal()
+    try:
+        if db.query(Driver).count() == 0:
+            drivers = ["Akeem", "Gani", "Emmanuel", "David", "Ibrahim", "Roselin", "Joseph", "3rd party", "Simeon", "Felix", "Fashe", "Nkeruka", "Blessing"]
+            for d_name in drivers:
+                db.add(Driver(name=d_name))
+            db.commit()
+            logger.info("Drivers seeded successfully!")
+    except Exception as e:
+        logger.error(f"Error seeding drivers: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 # Create tables (with error handling in case DB is unavailable)
 try:
     Base.metadata.create_all(bind=engine)
@@ -190,10 +206,26 @@ try:
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_write_access BOOLEAN DEFAULT FALSE;"))
         conn.execute(text("UPDATE users SET is_active = TRUE;"))
         conn.execute(text("UPDATE products SET default_unit = 'PIECES';"))
+        
+        # Swap existing Delivery No (waybill_number) and Invoice No prefixes in database
+        try:
+            conn.execute(text("""
+                UPDATE orders 
+                SET 
+                  waybill_number = REPLACE(waybill_number, '/SA/', '/DLN/'),
+                  invoice_number = REPLACE(invoice_number, '/DLN/', '/SA/')
+                WHERE 
+                  waybill_number LIKE '%/SA/%' OR invoice_number LIKE '%/DLN/%';
+            """))
+            logger.info("Successfully swapped SA/DLN prefixes in orders table.")
+        except Exception as e:
+            logger.warning(f"Could not swap SA/DLN prefixes in database: {e}")
+            
         conn.commit()
     seed_admin_user()
     seed_products()
     seed_stores()
+    seed_drivers()
 except Exception as e:
     logger.warning(f"Could not create tables or run migrations on startup: {e}. Database may be unavailable.")
 
@@ -226,6 +258,7 @@ app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(analytics.router)
 app.include_router(stores.router)
+app.include_router(drivers.router)
 
 @app.get("/")
 def root():

@@ -154,34 +154,44 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     }
   }
 
-  const createInitialOrderObject = (defaultSourceId = '') => ({
-    id: Math.random().toString(36).substr(2, 9),
-    customerId: '',
-    customerSearchQuery: '',
-    customerState: '',
-    customerCity: '',
-    matchingCustomers: [],
-    showCustomerDropdown: false,
-    pipelineType: '2-node', // '2-node' (direct regional to customer) or '3-node' (central to regional to customer)
-    regionalStoreId: '', // selected regional store ID
-    sourceStoreId: defaultSourceId,
-    destinationStoreId: '',
-    dispatchTime: '',
-    expectedDeliveryTime: '',
-    deliveryTimeError: '',
-    driverName: '',
-    vehicleNumber: '',
-    fuelCost: '0',
-    waybillCost: '0',
-    otherCosts: [],
-    notes: '',
-    waybills: [
-      { id: Math.random().toString(36).substr(2, 9), brand: 'DSL', waybillNumber: '', invoiceNumber: '' }
-    ],
-    lineItems: [
-      { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }
-    ]
-  })
+  const getLocalDatetimeString = (date = new Date()) => {
+    const offset = date.getTimezoneOffset()
+    const localDate = new Date(date.getTime() - offset * 60 * 1000)
+    return localDate.toISOString().substring(0, 16)
+  }
+
+  const createInitialOrderObject = (defaultSourceId = '') => {
+    const now = new Date()
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    return {
+      id: Math.random().toString(36).substr(2, 9),
+      customerId: '',
+      customerSearchQuery: '',
+      customerState: '',
+      customerCity: '',
+      matchingCustomers: [],
+      showCustomerDropdown: false,
+      pipelineType: '2-node', // '2-node' (direct regional to customer) or '3-node' (central to regional to customer)
+      regionalStoreId: '', // selected regional store ID
+      sourceStoreId: defaultSourceId,
+      destinationStoreId: '',
+      dispatchTime: getLocalDatetimeString(now),
+      expectedDeliveryTime: getLocalDatetimeString(tomorrow),
+      deliveryTimeError: '',
+      driverName: '',
+      vehicleNumber: '',
+      fuelCost: '0',
+      waybillCost: '0',
+      otherCosts: [],
+      notes: '',
+      waybills: [
+        { id: Math.random().toString(36).substr(2, 9), brand: 'DSL', waybillNumber: '', invoiceNumber: '' }
+      ],
+      lineItems: [
+        { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }
+      ]
+    }
+  }
 
   const addWaybill = (orderId) => {
     setBatchOrders(prev => prev.map(o => {
@@ -483,7 +493,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         for (let w = 0; w < order.waybills.length; w++) {
           const wb = order.waybills[w]
           if (wb.waybillNumber.trim()) {
-            const fullWb = (wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/') + wb.waybillNumber.trim()
+            const fullWb = (wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/') + wb.waybillNumber.trim()
             if (seenWaybills.has(fullWb)) {
               setError(`Duplicate Delivery No found: "${fullWb}". Two different reference cards cannot have the same Delivery No.`)
               return
@@ -491,7 +501,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
             seenWaybills.add(fullWb)
           }
           if (wb.invoiceNumber.trim()) {
-            const fullInv = (wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/') + wb.invoiceNumber.trim()
+            const fullInv = (wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/') + wb.invoiceNumber.trim()
             if (seenInvoices.has(fullInv)) {
               setError(`Duplicate Invoice No found: "${fullInv}". Two different reference cards cannot have the same Invoice No.`)
               return
@@ -590,8 +600,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         // Construct payload(s) for each waybill reference card
         for (let w = 0; w < order.waybills.length; w++) {
           const wb = order.waybills[w]
-          const fullWb = (wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/') + wb.waybillNumber.trim()
-          const fullInv = (wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/') + wb.invoiceNumber.trim()
+          const fullWb = (wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/') + wb.waybillNumber.trim()
+          const fullInv = (wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/') + wb.invoiceNumber.trim()
 
           let matchedItems = []
           if (order.waybills.length === 1) {
@@ -835,7 +845,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                 <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Invoice No</label>
                                 <div className="flex rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/60 focus-within:border-zinc-600 transition-colors">
                                   <span className="bg-zinc-900/60 px-3 py-2 text-zinc-400 text-xs font-semibold select-none border-r border-zinc-800 flex items-center min-w-[76px] justify-center">
-                                    {wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/'}
+                                    {wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/'}
                                   </span>
                                   <input
                                     type="text"
@@ -851,7 +861,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                 <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Delivery No</label>
                                 <div className="flex rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950/60 focus-within:border-zinc-600 transition-colors">
                                   <span className="bg-zinc-900/60 px-3 py-2 text-zinc-400 text-xs font-semibold select-none border-r border-zinc-800 flex items-center min-w-[76px] justify-center">
-                                    {wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/'}
+                                    {wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/'}
                                   </span>
                                   <input
                                     type="text"
@@ -1016,12 +1026,24 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                           value={order.dispatchTime}
                           onChange={(e) => {
                             const val = e.target.value
+                            let nextExpected = ''
+                            if (val) {
+                              const d = new Date(val)
+                              if (!isNaN(d.getTime())) {
+                                const dayLater = new Date(d.getTime() + 24 * 60 * 60 * 1000)
+                                const offset = dayLater.getTimezoneOffset()
+                                const localDate = new Date(dayLater.getTime() - offset * 60 * 1000)
+                                nextExpected = localDate.toISOString().substring(0, 16)
+                              }
+                            }
                             setBatchOrders(prev => prev.map(o => {
                               if (o.id !== order.id) return o
-                              const newTimeError = o.expectedDeliveryTime && new Date(o.expectedDeliveryTime) <= new Date(val)
-                                ? 'Expected Delivery must be after Dispatch Time.'
-                                : ''
-                              return { ...o, dispatchTime: val, deliveryTimeError: newTimeError }
+                              return { 
+                                ...o, 
+                                dispatchTime: val, 
+                                expectedDeliveryTime: nextExpected || o.expectedDeliveryTime,
+                                deliveryTimeError: ''
+                              }
                             }))
                           }}
                           className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
