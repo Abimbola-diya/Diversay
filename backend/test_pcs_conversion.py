@@ -34,11 +34,11 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 @pytest.fixture(autouse=True, scope="module")
 def setup_db():
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     
@@ -88,6 +88,7 @@ def setup_db():
             os.remove("./test_conversion.db")
         except Exception:
             pass
+    app.dependency_overrides.pop(get_db, None)
 
 def get_auth_headers():
     db = TestingSessionLocal()

@@ -49,11 +49,11 @@ def get_dashboard_metrics(
         for o in delayed
     ]
     
-    delivered_week = [
+    orders_week = [
         o for o in all_orders
-        if o.actual_delivery_time and o.actual_delivery_time >= week_start
+        if o.created_at and o.created_at >= week_start
     ]
-    delivered_this_week = len(delivered_week)
+    delivered_this_week = len(orders_week)
     
     customer_ids = {o.customer_id for o in all_orders}
     total_customers = len(customer_ids)
