@@ -367,7 +367,33 @@ def list_orders(
         query = query.filter(or_(*filters))
     
     if status:
-        query = query.filter(Order.order_status == status)
+        now_utc = datetime.utcnow()
+        if status == OrderStatus.DRAFT.value:
+            query = query.filter(Order.dispatch_time == None, Order.actual_delivery_time == None)
+        elif status == OrderStatus.IN_TRANSIT.value:
+            query = query.filter(
+                Order.actual_delivery_time == None,
+                Order.dispatch_time != None,
+                Order.expected_delivery_time >= now_utc
+            )
+        elif status == OrderStatus.DELAYED.value:
+            query = query.filter(
+                Order.actual_delivery_time == None,
+                Order.dispatch_time != None,
+                Order.expected_delivery_time < now_utc
+            )
+        elif status == OrderStatus.DELIVERED_ON_TIME.value:
+            query = query.filter(
+                Order.actual_delivery_time != None,
+                Order.actual_delivery_time <= Order.expected_delivery_time
+            )
+        elif status == OrderStatus.DELIVERED_LATE.value:
+            query = query.filter(
+                Order.actual_delivery_time != None,
+                Order.actual_delivery_time > Order.expected_delivery_time
+            )
+        else:
+            query = query.filter(Order.order_status == status)
     
     if start_date:
         query = query.filter(Order.dispatch_time >= start_date)

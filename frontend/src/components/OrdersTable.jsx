@@ -48,6 +48,20 @@ export default function OrdersTable() {
     }
   }, [navState.filterState])
 
+  useEffect(() => {
+    if (navState.filterStatus !== undefined && navState.filterStatus !== filterStatus) {
+      setFilterStatus(navState.filterStatus)
+      setPage(0)
+    }
+  }, [navState.filterStatus])
+
+  useEffect(() => {
+    if (navState.dateRange !== undefined && navState.dateRange !== dateRange) {
+      setDateRange(navState.dateRange)
+      setPage(0)
+    }
+  }, [navState.dateRange])
+
   // Debounce search term changes
   useEffect(() => {
     const handler = setTimeout(() => {

@@ -17,10 +17,12 @@ def get_dashboard_metrics(
 ):
     """Get dashboard metrics."""
     
-    now = datetime.utcnow()
-    today_start = datetime(now.year, now.month, now.day)
-    week_start = today_start - timedelta(days=today_start.weekday())
-    thirty_days_ago = today_start - timedelta(days=30)
+    # Adjust UTC to UTC+1 for local business timezone (West Africa Time)
+    local_now = datetime.utcnow() + timedelta(hours=1)
+    today_local_date = local_now.date()
+    today_start_local = datetime(local_now.year, local_now.month, local_now.day)
+    week_start_local = today_start_local - timedelta(days=today_start_local.weekday())
+    thirty_days_ago_local = today_start_local - timedelta(days=30)
     
     all_orders = db.query(Order).filter(Order.is_deleted == False).options(
         joinedload(Order.customer),
@@ -32,7 +34,11 @@ def get_dashboard_metrics(
     for order in all_orders:
         order.order_status = calculate_order_status(order)
     
-    orders_today = [o for o in all_orders if o.dispatch_time and o.dispatch_time.date() == today_start.date()]
+    # Filter today's orders using UTC+1 adjusted dates
+    orders_today = [
+        o for o in all_orders 
+        if o.dispatch_time and (o.dispatch_time + timedelta(hours=1)).date() == today_local_date
+    ]
     total_orders_today = len(orders_today)
     
     in_transit = [o for o in all_orders if o.order_status == OrderStatus.IN_TRANSIT]
@@ -49,14 +55,15 @@ def get_dashboard_metrics(
         for o in delayed
     ]
     
+    # Filter weekly orders using UTC+1 adjusted creation dates
     orders_week = [
         o for o in all_orders
-        if o.created_at and o.created_at >= week_start
+        if o.created_at and (o.created_at + timedelta(hours=1)) >= week_start_local
     ]
     delivered_this_week = len(orders_week)
     
-    customer_ids = {o.customer_id for o in all_orders}
-    total_customers = len(customer_ids)
+    # Distinct registered customers from the database
+    total_customers = db.query(Customer).filter(Customer.is_deleted == False).count()
     
     status_counts = {}
     for order in all_orders:
@@ -89,7 +96,7 @@ def get_dashboard_metrics(
     
     orders_30_days = {}
     for order in all_orders:
-        if order.dispatch_time and order.dispatch_time >= thirty_days_ago:
+        if order.dispatch_time and order.dispatch_time >= thirty_days_ago_local:
             date_key = order.dispatch_time.date().isoformat()
             orders_30_days[date_key] = orders_30_days.get(date_key, 0) + 1
     
@@ -99,11 +106,11 @@ def get_dashboard_metrics(
     ]
     
     # Calculate 30 day volume and growth vs previous 30 days
-    sixty_days_ago = today_start - timedelta(days=60)
-    orders_current_30 = [o for o in all_orders if o.dispatch_time and o.dispatch_time >= thirty_days_ago]
+    sixty_days_ago = today_start_local - timedelta(days=60)
+    orders_current_30 = [o for o in all_orders if o.dispatch_time and o.dispatch_time >= thirty_days_ago_local]
     total_orders_30_days = len(orders_current_30)
     
-    orders_prev_30 = [o for o in all_orders if o.dispatch_time and sixty_days_ago <= o.dispatch_time < thirty_days_ago]
+    orders_prev_30 = [o for o in all_orders if o.dispatch_time and sixty_days_ago <= o.dispatch_time < thirty_days_ago_local]
     total_orders_prev_30_days = len(orders_prev_30)
     
     if total_orders_prev_30_days > 0:
