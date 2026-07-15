@@ -109,6 +109,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [confirmAdd, setConfirmAdd] = useState(null)
   const [centralStoreId, setCentralStoreId] = useState('')
   const [storeInventories, setStoreInventories] = useState({})
   const [drivers, setDrivers] = useState([])
@@ -495,39 +496,53 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     return chunks.join(' ')
   }
 
-  const handleAddNewDriver = async (driverName, orderId) => {
+  const handleAddNewDriver = (driverName, orderId) => {
     if (!driverName || !driverName.trim()) return
-    const cleanName = driverName.trim()
-    try {
-      setError(null)
-      const res = await api.post('/drivers', { name: cleanName })
-      if (res.data) {
-        setDrivers(prev => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)))
-        setBatchOrders(prev => prev.map(o => o.id === orderId ? { ...o, driverName: res.data.name, showDriverDropdown: false } : o))
-        invalidateCache('/drivers')
-      }
-    } catch (err) {
-      console.error("Failed to add driver:", err)
-      const errMsg = err.response?.data?.detail || "Failed to add driver to database."
-      setError(errMsg)
-    }
+    setConfirmAdd({
+      type: 'driver',
+      name: driverName.trim(),
+      orderId
+    })
   }
 
-  const handleAddNewVehicle = async (plateNumber, orderId) => {
+  const handleAddNewVehicle = (plateNumber, orderId) => {
     if (!plateNumber || !plateNumber.trim()) return
-    const formatted = formatLicensePlate(plateNumber)
+    setConfirmAdd({
+      type: 'vehicle',
+      plateNumber: formatLicensePlate(plateNumber),
+      orderId
+    })
+  }
+
+  const handleConfirmAdd = async () => {
+    if (!confirmAdd) return
+    const { type, orderId } = confirmAdd
+    
     try {
       setError(null)
-      const res = await api.post('/vehicles', { plate_number: formatted })
-      if (res.data) {
-        setVehicles(prev => [...prev, res.data].sort((a, b) => a.plate_number.localeCompare(b.plate_number)))
-        setBatchOrders(prev => prev.map(o => o.id === orderId ? { ...o, vehicleNumber: res.data.plate_number, showVehicleDropdown: false } : o))
-        invalidateCache('/vehicles')
+      if (type === 'driver') {
+        const { name } = confirmAdd
+        const res = await api.post('/drivers', { name })
+        if (res.data) {
+          setDrivers(prev => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)))
+          setBatchOrders(prev => prev.map(o => o.id === orderId ? { ...o, driverName: res.data.name, showDriverDropdown: false } : o))
+          invalidateCache('/drivers')
+        }
+      } else if (type === 'vehicle') {
+        const { plateNumber } = confirmAdd
+        const res = await api.post('/vehicles', { plate_number: plateNumber })
+        if (res.data) {
+          setVehicles(prev => [...prev, res.data].sort((a, b) => a.plate_number.localeCompare(b.plate_number)))
+          setBatchOrders(prev => prev.map(o => o.id === orderId ? { ...o, vehicleNumber: res.data.plate_number, showVehicleDropdown: false } : o))
+          invalidateCache('/vehicles')
+        }
       }
     } catch (err) {
-      console.error("Failed to add vehicle:", err)
-      const errMsg = err.response?.data?.detail || "Failed to add vehicle to database."
+      console.error(`Failed to add new ${type}:`, err)
+      const errMsg = err.response?.data?.detail || `Failed to add new ${type} to database.`
       setError(errMsg)
+    } finally {
+      setConfirmAdd(null)
     }
   }
 
@@ -1628,6 +1643,38 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         </>
         )}
       </div>
+
+      {/* Confirmation Modal Overlay */}
+      {confirmAdd && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4 animate-in scale-in duration-200">
+            <h4 className="text-lg font-bold text-zinc-100">Confirm Add</h4>
+            <p className="text-sm text-zinc-400">
+              Are you sure you want to add{' '}
+              <span className="font-semibold text-white">
+                {confirmAdd.type === 'driver' ? confirmAdd.name : confirmAdd.plateNumber}
+              </span>{' '}
+              to your list of {confirmAdd.type}s?
+            </p>
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmAdd(null)}
+                className="px-4 py-2 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900 text-zinc-400 hover:text-white text-xs font-semibold rounded-xl transition-all"
+              >
+                No, Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAdd}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-emerald-600/10 hover:shadow-emerald-500/25 hover:-translate-y-0.5 transition-all"
+              >
+                Yes, Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
