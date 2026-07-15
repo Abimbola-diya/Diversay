@@ -97,9 +97,11 @@ def get_dashboard_metrics(
     
     orders_30_days = {}
     for order in all_orders:
-        if order.dispatch_time and order.dispatch_time >= thirty_days_ago_local:
-            date_key = order.dispatch_time.date().isoformat()
-            orders_30_days[date_key] = orders_30_days.get(date_key, 0) + 1
+        if order.dispatch_time:
+            local_dispatch = order.dispatch_time + timedelta(hours=1)
+            if local_dispatch >= thirty_days_ago_local:
+                date_key = local_dispatch.date().isoformat()
+                orders_30_days[date_key] = orders_30_days.get(date_key, 0) + 1
     
     orders_last_30_days = [
         OrderMetrics(date=date, count=count)
@@ -108,10 +110,16 @@ def get_dashboard_metrics(
     
     # Calculate 30 day volume and growth vs previous 30 days
     sixty_days_ago = today_start_local - timedelta(days=60)
-    orders_current_30 = [o for o in all_orders if o.dispatch_time and o.dispatch_time >= thirty_days_ago_local]
+    orders_current_30 = [
+        o for o in all_orders 
+        if o.dispatch_time and (o.dispatch_time + timedelta(hours=1)) >= thirty_days_ago_local
+    ]
     total_orders_30_days = len(orders_current_30)
     
-    orders_prev_30 = [o for o in all_orders if o.dispatch_time and sixty_days_ago <= o.dispatch_time < thirty_days_ago_local]
+    orders_prev_30 = [
+        o for o in all_orders 
+        if o.dispatch_time and sixty_days_ago <= (o.dispatch_time + timedelta(hours=1)) < thirty_days_ago_local
+    ]
     total_orders_prev_30_days = len(orders_prev_30)
     
     if total_orders_prev_30_days > 0:
