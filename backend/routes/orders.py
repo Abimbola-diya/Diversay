@@ -146,100 +146,135 @@ def create_order(
                 detail=f"Invoice No '{order_create.invoice_number}' is already in use by order {existing_invoice.order_number}."
             )
 
-    order_number = generate_order_number(db)
+    from sqlalchemy.exc import IntegrityError
     
-    new_order = Order(
-        order_number=order_number,
-        waybill_number=order_create.waybill_number,
-        invoice_number=order_create.invoice_number,
-        customer_id=order_create.customer_id,
-        source_store_id=order_create.source_store_id,
-        destination_store_id=order_create.destination_store_id,
-        dispatch_time=order_create.dispatch_time,
-        expected_delivery_time=order_create.expected_delivery_time,
-        notes=order_create.notes,
-        driver_name=order_create.driver_name,
-        vehicle_number=order_create.vehicle_number,
-        fuel_cost=order_create.fuel_cost or 0.0,
-        waybill_cost=order_create.waybill_cost or 0.0,
-        other_costs=order_create.other_costs or [],
-        created_by_id=current_user.id
-    )
-    
-    update_order_status(new_order)
-    
-    db.add(new_order)
-    db.flush()
-    
-    for item in order_create.line_items:
-        product = products_map.get(item.product_id)
-        line_item = OrderLineItem(
-            order_id=new_order.id,
-            product_id=item.product_id,
-            quantity=item.quantity,
-            unit=item.unit,
-            unit_price=product.unit_price if product else 0.0
-        )
-        db.add(line_item)
+    max_retries = 10
+    inserted = False
+    new_order = None
+    order_number = None
+
+    try:
+        for attempt in range(max_retries):
+            order_number = generate_order_number(db)
+            new_order = Order(
+                order_number=order_number,
+                waybill_number=order_create.waybill_number,
+                invoice_number=order_create.invoice_number,
+                customer_id=order_create.customer_id,
+                source_store_id=order_create.source_store_id,
+                destination_store_id=order_create.destination_store_id,
+                dispatch_time=order_create.dispatch_time,
+                expected_delivery_time=order_create.expected_delivery_time,
+                notes=order_create.notes,
+                driver_name=order_create.driver_name,
+                vehicle_number=order_create.vehicle_number,
+                fuel_cost=order_create.fuel_cost or 0.0,
+                waybill_cost=order_create.waybill_cost or 0.0,
+                other_costs=order_create.other_costs or [],
+                created_by_id=current_user.id
+            )
+            update_order_status(new_order)
+            
+            try:
+                with db.begin_nested():
+                    db.add(new_order)
+                    db.flush()
+                inserted = True
+                break
+            except IntegrityError as e:
+                err_msg = str(e)
+                if "order_number" in err_msg or "ix_orders_order_number" in err_msg:
+                    # Savepoint is rolled back automatically. We loop again to get a fresh order number.
+                    continue
+                else:
+                    # Let the outer try block handle it
+                    raise
+
+        if not inserted:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate a unique order number due to concurrent requests. Please try again."
+            )
+
+        for item in order_create.line_items:
+            product = products_map.get(item.product_id)
+            line_item = OrderLineItem(
+                order_id=new_order.id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit=item.unit,
+                unit_price=product.unit_price if product else 0.0
+            )
+            db.add(line_item)
+            
+            # Debiting stock from source store
+            if order_create.source_store_id:
+                src_inv = db.query(StoreInventory).filter(
+                    StoreInventory.store_id == order_create.source_store_id,
+                    StoreInventory.product_id == item.product_id
+                ).first()
+                if not src_inv:
+                    src_inv = StoreInventory(
+                        store_id=order_create.source_store_id,
+                        product_id=item.product_id,
+                        stock=0.0
+                    )
+                    db.add(src_inv)
+                
+                factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
+                src_inv.stock -= item.quantity * factor
+                
+            # Crediting/debiting stock to destination store
+            if order_create.destination_store_id:
+                dest_inv = db.query(StoreInventory).filter(
+                    StoreInventory.store_id == order_create.destination_store_id,
+                    StoreInventory.product_id == item.product_id
+                ).first()
+                if not dest_inv:
+                    dest_inv = StoreInventory(
+                        store_id=order_create.destination_store_id,
+                        product_id=item.product_id,
+                        stock=0.0
+                    )
+                    db.add(dest_inv)
+                
+                factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
+                # Credit the destination (regional) store
+                dest_inv.stock += item.quantity * factor
+                
+                # If source store is central, then this is a 3-node supply: Central -> Regional -> Customer.
+                # In a 3-node supply, the regional store receives it (+quantity) and then ships it to customer (-quantity).
+                source_store = db.query(Store).filter(Store.id == order_create.source_store_id).first()
+                if source_store and source_store.is_central:
+                    dest_inv.stock -= item.quantity * factor
         
-        # Debiting stock from source store
-        if order_create.source_store_id:
-            src_inv = db.query(StoreInventory).filter(
-                StoreInventory.store_id == order_create.source_store_id,
-                StoreInventory.product_id == item.product_id
-            ).first()
-            if not src_inv:
-                src_inv = StoreInventory(
-                    store_id=order_create.source_store_id,
-                    product_id=item.product_id,
-                    stock=0.0
-                )
-                db.add(src_inv)
-            
-            factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
-            src_inv.stock -= item.quantity * factor
-            
-        # Crediting/debiting stock to destination store
-        if order_create.destination_store_id:
-            dest_inv = db.query(StoreInventory).filter(
-                StoreInventory.store_id == order_create.destination_store_id,
-                StoreInventory.product_id == item.product_id
-            ).first()
-            if not dest_inv:
-                dest_inv = StoreInventory(
-                    store_id=order_create.destination_store_id,
-                    product_id=item.product_id,
-                    stock=0.0
-                )
-                db.add(dest_inv)
-            
-            factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
-            # Credit the destination (regional) store
-            dest_inv.stock += item.quantity * factor
-            
-            # If source store is central, then this is a 3-node supply: Central -> Regional -> Customer.
-            # In a 3-node supply, the regional store receives it (+quantity) and then ships it to customer (-quantity).
-            source_store = db.query(Store).filter(Store.id == order_create.source_store_id).first()
-            if source_store and source_store.is_central:
-                dest_inv.stock -= item.quantity * factor
-    
-    db.flush()
-    
-    import uuid
-    commit_hash = uuid.uuid4().hex[:7]
-    commit_msg = order_create.commit_message or f"Initial creation of order {order_number}"
-    snapshot = get_order_snapshot(new_order)
-    
-    create_audit_log(
-        db, current_user.id, ActionType.CREATE, "orders", new_order.id,
-        {
-            "action": commit_msg,
-            "commit_hash": commit_hash,
-            "state_snapshot": snapshot
-        }
-    )
-    
-    db.commit()
+        db.flush()
+        
+        import uuid
+        commit_hash = uuid.uuid4().hex[:7]
+        commit_msg = order_create.commit_message or f"Initial creation of order {order_number}"
+        snapshot = get_order_snapshot(new_order)
+        
+        create_audit_log(
+            db, current_user.id, ActionType.CREATE, "orders", new_order.id,
+            {
+                "action": commit_msg,
+                "commit_hash": commit_hash,
+                "state_snapshot": snapshot
+            }
+        )
+        
+        db.commit()
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create order due to database error: {str(e)}"
+        )
     
     db_order = db.query(Order).options(
         joinedload(Order.customer),

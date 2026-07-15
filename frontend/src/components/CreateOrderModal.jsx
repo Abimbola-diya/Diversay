@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle, RefreshCw } from 'lucide-react'
+import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react'
 import api, { getWithCache, invalidateCache } from '../services/api'
+import { useNavigate } from 'react-router-dom'
 
 const getConversionFactor = (productName) => {
   const nameLower = (productName || '').toLowerCase();
@@ -28,14 +29,14 @@ const ProductSearchDropdown = ({ query, products, onSelect }) => {
   if (filtered.length === 0) return null
 
   return (
-    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
-      <ul className="divide-y divide-zinc-800">
+    <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950/90 border border-zinc-800/80 rounded-xl shadow-2xl z-50 max-h-[132px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-xl">
+      <ul className="divide-y divide-zinc-900/50">
         {filtered.map((product) => (
           <li key={product.id}>
             <button
               type="button"
               onClick={() => onSelect(product)}
-              className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700/55 transition-colors flex justify-between items-center"
+              className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
             >
               <div className="flex items-center gap-2">
                 <span className="font-medium text-zinc-100">{product.name}</span>
@@ -72,20 +73,19 @@ const searchCustomersLocally = (query, customersList) => {
       const nameLower = c.name.toLowerCase()
       let score = 0
       
-      // 1. Starts with query
-      if (nameLower.startsWith(queryLower)) {
+      // 1. Exact match gets highest score
+      if (nameLower === queryLower) {
+        score += 10
+      }
+      
+      // 2. Starts with query gets high score
+      else if (nameLower.startsWith(queryLower)) {
         score += 5
       }
       
-      // 2. Any word starts with query
-      const words = nameLower.split(/\s+/)
-      if (words.some(w => w.startsWith(queryLower))) {
+      // 3. Contains full query gets medium score
+      else if (nameLower.includes(queryLower)) {
         score += 3
-      }
-      
-      // 3. Substring match
-      if (nameLower.includes(queryLower)) {
-        score += 2
       }
       
       // 4. Any query word matches any customer name word
@@ -101,12 +101,14 @@ const searchCustomersLocally = (query, customersList) => {
 }
 
 export default function CreateOrderModal({ isOpen, onClose }) {
+  const navigate = useNavigate()
   const [products, setProducts] = useState([])
   const [customers, setCustomers] = useState([])
   const [stores, setStores] = useState([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [showSuccess, setShowSuccess] = useState(false)
   const [centralStoreId, setCentralStoreId] = useState('')
   const [storeInventories, setStoreInventories] = useState({})
   const [drivers, setDrivers] = useState([])
@@ -280,8 +282,30 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     if (isOpen) {
       setStoreInventories({})
       fetchFormData()
+      setShowSuccess(false)
     }
   }, [isOpen])
+
+  const handleSuccessClose = () => {
+    setShowSuccess(false)
+    const centralStore = stores.find(s => s.is_central)
+    const centralStoreIdStr = centralStore ? centralStore.id.toString() : ''
+    setBatchOrders([createInitialOrderObject(centralStoreIdStr)])
+    setStoreInventories({})
+    onClose()
+    window.dispatchEvent(new Event('order-created'))
+    navigate('/')
+  }
+
+  useEffect(() => {
+    let timer
+    if (showSuccess) {
+      timer = setTimeout(() => {
+        handleSuccessClose()
+      }, 3000)
+    }
+    return () => clearTimeout(timer)
+  }, [showSuccess])
 
   // Automatically fetch store inventories for active departure stores
   useEffect(() => {
@@ -702,25 +726,16 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       // Send all POST requests concurrently
       const requests = payloads.map(payload => api.post('/orders/', payload))
 
-      // Reset form & close modal immediately for optimistic instantaneous UI response
-      const centralStore = stores.find(s => s.is_central)
-      const centralStoreId = centralStore ? centralStore.id.toString() : ''
-      setBatchOrders([createInitialOrderObject(centralStoreId)])
-      setStoreInventories({})
-      onClose()
-
-      // Await requests in the background
-      Promise.all(requests)
-        .then(() => {
-          // Trigger order list refresh across the entire page
-          window.dispatchEvent(new Event('order-created'))
-        })
-        .catch(err => {
-          console.error('Failed to create orders batch in background:', err)
-        })
-        .finally(() => {
-          setSubmitting(false)
-        })
+      try {
+        await Promise.all(requests)
+        setShowSuccess(true)
+      } catch (err) {
+        console.error('Failed to create orders batch:', err)
+        const errorDetail = err.response?.data?.detail || err.message || 'Failed to create one or more orders. Please try again.'
+        setError(errorDetail)
+      } finally {
+        setSubmitting(false)
+      }
     } catch (err) {
       console.error('Failed to initiate orders batch creation:', err)
       setError(err.response?.data?.detail || 'Failed to initiate order creation. Please check your data and try again.')
@@ -735,28 +750,47 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
-        onClick={onClose}
+        onClick={submitting || showSuccess ? undefined : onClose}
       />
 
       {/* Modal Container */}
       <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative z-10 shadow-2xl animate-in scale-in duration-200">
-
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
-              <Plus size={18} className="text-white" />
+        {showSuccess ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-zinc-950 animate-in fade-in duration-300">
+            <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 rounded-full flex items-center justify-center mb-6 animate-bounce">
+              <CheckCircle size={36} />
             </div>
-            <h3 className="text-xl font-bold text-white">
-              {batchOrders.length > 1 ? `Create Batch Orders (${batchOrders.length})` : 'Create New Order'}
-            </h3>
+            <h3 className="text-2xl font-bold text-zinc-100 mb-2">Order Created Successfully!</h3>
+            <p className="text-sm text-zinc-400 max-w-md mb-8">
+              The order has been generated and persisted to the database. The stock levels have been updated accordingly.
+            </p>
+            <button
+              type="button"
+              onClick={handleSuccessClose}
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl shadow-lg shadow-emerald-600/20 hover:shadow-emerald-500/35 hover:-translate-y-0.5 transition-all text-sm"
+            >
+              Back to Dashboard
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
+                  <Plus size={18} className="text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  {batchOrders.length > 1 ? `Create Batch Orders (${batchOrders.length})` : 'Create New Order'}
+                </h3>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                disabled={submitting}
+              >
+                <X size={20} />
+              </button>
+            </div>
 
         {/* Content Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-modal-scroll bg-zinc-900/20" style={{ overscrollBehavior: 'contain' }}>
@@ -821,14 +855,14 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                         />
                         
                         {order.showCustomerDropdown && order.matchingCustomers.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-800 border border-zinc-700/80 rounded-xl shadow-xl z-50 overflow-hidden backdrop-blur-md">
-                            <ul className="divide-y divide-zinc-800">
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950/75 border border-zinc-800/80 rounded-xl shadow-xl z-50 overflow-hidden backdrop-blur-md">
+                            <ul className="divide-y divide-zinc-900/50">
                               {order.matchingCustomers.map((c) => (
                                 <li key={c.id}>
                                   <button
                                     type="button"
                                     onClick={() => handleSelectCustomer(order.id, c)}
-                                    className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-700/55 transition-colors flex justify-between items-center"
+                                    className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
                                   >
                                     <span className="font-medium text-zinc-100">{c.name}</span>
                                     {c.state && <span className="text-xs text-zinc-400 font-semibold px-2 py-0.5 bg-zinc-800 rounded">{c.state}</span>}
@@ -1172,8 +1206,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                           
                           {/* Driver Dropdown */}
                           {order.showDriverDropdown && (
-                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-900 border border-zinc-805 rounded-xl shadow-xl z-50 max-h-[160px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
-                              <ul className="divide-y divide-zinc-850">
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950/75 border border-zinc-800/80 rounded-xl shadow-xl z-50 max-h-[160px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+                              <ul className="divide-y divide-zinc-900/50">
                                 {drivers
                                   .filter(d => d.name.toLowerCase().includes(order.driverName.toLowerCase()))
                                   .map(d => (
@@ -1183,7 +1217,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                         onClick={() => {
                                           setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, driverName: d.name, showDriverDropdown: false } : o))
                                         }}
-                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors flex justify-between items-center"
+                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
                                       >
                                         <span>{d.name}</span>
                                       </button>
@@ -1239,8 +1273,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                           
                           {/* Vehicle Dropdown */}
                           {order.showVehicleDropdown && (
-                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-900 border border-zinc-805 rounded-xl shadow-xl z-50 max-h-[160px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
-                              <ul className="divide-y divide-zinc-850">
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950/75 border border-zinc-800/80 rounded-xl shadow-xl z-50 max-h-[160px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+                              <ul className="divide-y divide-zinc-900/50">
                                 {vehicles
                                   .filter(v => v.plate_number.toLowerCase().replace(/\s+/g, '').includes(order.vehicleNumber.toLowerCase().replace(/\s+/g, '')))
                                   .map(v => (
@@ -1250,7 +1284,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                         onClick={() => {
                                           setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, vehicleNumber: v.plate_number, showVehicleDropdown: false } : o))
                                         }}
-                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors flex justify-between items-center"
+                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
                                       >
                                         <span>{v.plate_number}</span>
                                       </button>
@@ -1591,6 +1625,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
             </button>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   )

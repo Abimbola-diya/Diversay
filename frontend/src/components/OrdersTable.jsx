@@ -111,11 +111,9 @@ export default function OrdersTable() {
       if (dateRange === '30days') {
         const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
         params.start_date = thirtyDaysAgo.toISOString()
-        params.end_date = endOfToday.toISOString()
       } else if (dateRange === '7days') {
         const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
         params.start_date = sevenDaysAgo.toISOString()
-        params.end_date = endOfToday.toISOString()
       } else if (dateRange === 'today') {
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         params.start_date = startOfToday.toISOString()
