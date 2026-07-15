@@ -25,6 +25,8 @@ export default function OrdersTable() {
   const [dateRange, setDateRange] = useState(() => navState.dateRange ?? _cached?.dateRange ?? '30days')
   const [expandedRows, setExpandedRows] = useState(new Set())
   const [scrollPosition, setScrollPosition] = useState({})
+  const [activeDeliveryEditOrderId, setActiveDeliveryEditOrderId] = useState(null)
+  const [deliveryTimeInput, setDeliveryTimeInput] = useState('')
   const fetchRequestRef = useRef(0)
 
   useEffect(() => {
@@ -284,6 +286,28 @@ export default function OrdersTable() {
       'Draft': 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
     }
     return colors[status] || colors['Draft']
+  }
+
+  const getLocalDatetimeString = () => {
+    const now = new Date()
+    const offset = now.getTimezoneOffset()
+    const localDate = new Date(now.getTime() - offset * 60 * 1000)
+    return localDate.toISOString().substring(0, 16)
+  }
+
+  const handleMarkDelivered = async (orderId) => {
+    try {
+      setLoading(true)
+      const res = await api.patch(`/orders/${orderId}/mark-delivered`, {
+        actual_delivery_time: new Date(deliveryTimeInput).toISOString()
+      })
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...res.data } : o))
+      setActiveDeliveryEditOrderId(null)
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to mark order as delivered.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const totalPages = Math.ceil(totalOrders / pageSize)
@@ -749,6 +773,69 @@ export default function OrdersTable() {
                       <div className="text-[10px] font-bold text-zinc-500 tracking-[0.15em] uppercase">
                         {monthYear}
                       </div>
+                    </div>
+
+                    {/* Delivery Confirmation Widget */}
+                    <div className="w-full px-1 my-2 min-h-[42px] flex items-center justify-center">
+                      {activeDeliveryEditOrderId === order.id ? (
+                        <div className="flex flex-col gap-1.5 w-full bg-zinc-800/80 p-2 rounded-xl border border-zinc-700/60 animate-fadeIn">
+                          <label className="text-[8px] font-black text-zinc-400 tracking-wider uppercase text-left">
+                            Delivery Date & Time
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={deliveryTimeInput}
+                            onChange={(e) => setDeliveryTimeInput(e.target.value)}
+                            className="w-full px-2 py-1 bg-zinc-900 border border-zinc-700 rounded text-[11px] text-white focus:outline-none focus:border-zinc-500"
+                          />
+                          <div className="flex gap-1 mt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleMarkDelivered(order.id)}
+                              className="flex-1 py-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[9px] uppercase tracking-wider rounded transition-colors"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveDeliveryEditOrderId(null)}
+                              className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white font-bold text-[9px] uppercase tracking-wider rounded transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : order.order_status.toLowerCase().includes('delivered') ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-[9px] font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 border border-emerald-500/20 rounded uppercase tracking-wider">
+                            ✓ Delivered
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveDeliveryEditOrderId(order.id)
+                              const d = order.actual_delivery_time ? new Date(order.actual_delivery_time) : new Date()
+                              const offset = d.getTimezoneOffset()
+                              const localDate = new Date(d.getTime() - offset * 60 * 1000)
+                              setDeliveryTimeInput(localDate.toISOString().substring(0, 16))
+                            }}
+                            className="text-[8px] font-semibold text-zinc-500 hover:text-zinc-300 transition-colors underline"
+                          >
+                            Change Date
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveDeliveryEditOrderId(order.id)
+                            setDeliveryTimeInput(getLocalDatetimeString())
+                          }}
+                          className="w-full py-1.5 px-3 bg-zinc-800 hover:bg-white text-zinc-300 hover:text-zinc-900 border border-zinc-700/80 hover:border-white rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-300 hover:shadow-lg active:scale-95"
+                        >
+                          Mark Delivered
+                        </button>
+                      )}
                     </div>
 
                     {/* Barcode */}
