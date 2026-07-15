@@ -190,6 +190,7 @@ export default function WeeklyCustomersPage() {
 
     const now = new Date()
     let startDate = new Date()
+    let endDate = new Date()
 
     if (timeRange === '7days') {
       startDate.setDate(now.getDate() - 7)
@@ -199,15 +200,23 @@ export default function WeeklyCustomersPage() {
       // Monday of this week
       const day = now.getDay()
       const diff = now.getDate() - day + (day === 0 ? -6 : 1)
-      startDate = new Date(now.setDate(diff))
-      startDate.setHours(0, 0, 0, 0)
+      const monday = new Date(now)
+      monday.setDate(diff)
+      monday.setHours(0, 0, 0, 0)
+      startDate = monday
+
+      // Sunday of this week
+      const sunday = new Date(monday)
+      sunday.setDate(monday.getDate() + 6)
+      sunday.setHours(23, 59, 59, 999)
+      endDate = sunday
     }
 
     return {
       start: startDate.toISOString(),
-      end: new Date().toISOString(),
+      end: endDate.toISOString(),
       displayStart: startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      displayEnd: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      displayEnd: endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       isAllTime: false
     }
   }, [timeRange])
