@@ -109,6 +109,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const [error, setError] = useState(null)
   const [centralStoreId, setCentralStoreId] = useState('')
   const [storeInventories, setStoreInventories] = useState({})
+  const [drivers, setDrivers] = useState([])
+  const [vehicles, setVehicles] = useState([])
 
   const getDepartureStoreId = (order) => {
     if (order.pipelineType === '2-node') {
@@ -171,6 +173,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       customerCity: '',
       matchingCustomers: [],
       showCustomerDropdown: false,
+      showDriverDropdown: false,
+      showVehicleDropdown: false,
       pipelineType: '2-node', // '2-node' (direct regional to customer) or '3-node' (central to regional to customer)
       regionalStoreId: '', // selected regional store ID
       sourceStoreId: defaultSourceId,
@@ -247,6 +251,12 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       if (!e.target.closest('.customer-search-container')) {
         setBatchOrders(prev => prev.map(o => ({ ...o, showCustomerDropdown: false })))
       }
+      if (!e.target.closest('.driver-search-container')) {
+        setBatchOrders(prev => prev.map(o => ({ ...o, showDriverDropdown: false })))
+      }
+      if (!e.target.closest('.vehicle-search-container')) {
+        setBatchOrders(prev => prev.map(o => ({ ...o, showVehicleDropdown: false })))
+      }
     }
     document.addEventListener('mousedown', handleOutsideClick)
     return () => {
@@ -293,10 +303,12 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     try {
       setLoading(true)
       setError(null)
-      const [productsRes, customersRes, storesRes] = await Promise.all([
+      const [productsRes, customersRes, storesRes, driversRes, vehiclesRes] = await Promise.all([
         getWithCache('/products', { params: { limit: 1000 } }),
         getWithCache('/customers', { params: { limit: 1000 } }),
-        getWithCache('/stores')
+        getWithCache('/stores'),
+        getWithCache('/drivers'),
+        getWithCache('/vehicles')
       ])
       const fetchedProducts = productsRes.data.items || productsRes.data || []
       const fetchedCustomers = customersRes.data.items || customersRes.data || []
@@ -304,6 +316,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       setProducts(fetchedProducts)
       setCustomers(fetchedCustomers)
       setStores(fetchedStores)
+      setDrivers(driversRes.data || [])
+      setVehicles(vehiclesRes.data || [])
 
       const centralStore = fetchedStores.find(s => s.is_central)
       const centralStoreIdStr = centralStore ? centralStore.id.toString() : ''
@@ -445,6 +459,52 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       }
       return o
     }))
+  }
+
+  const formatLicensePlate = (val) => {
+    if (!val) return ''
+    const clean = val.replace(/\s+/g, '').toUpperCase()
+    const chunks = []
+    for (let i = 0; i < clean.length; i += 3) {
+      chunks.push(clean.substring(i, i + 3))
+    }
+    return chunks.join(' ')
+  }
+
+  const handleAddNewDriver = async (driverName, orderId) => {
+    if (!driverName || !driverName.trim()) return
+    const cleanName = driverName.trim()
+    try {
+      setError(null)
+      const res = await api.post('/drivers', { name: cleanName })
+      if (res.data) {
+        setDrivers(prev => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)))
+        setBatchOrders(prev => prev.map(o => o.id === orderId ? { ...o, driverName: res.data.name, showDriverDropdown: false } : o))
+        invalidateCache('/drivers')
+      }
+    } catch (err) {
+      console.error("Failed to add driver:", err)
+      const errMsg = err.response?.data?.detail || "Failed to add driver to database."
+      setError(errMsg)
+    }
+  }
+
+  const handleAddNewVehicle = async (plateNumber, orderId) => {
+    if (!plateNumber || !plateNumber.trim()) return
+    const formatted = formatLicensePlate(plateNumber)
+    try {
+      setError(null)
+      const res = await api.post('/vehicles', { plate_number: formatted })
+      if (res.data) {
+        setVehicles(prev => [...prev, res.data].sort((a, b) => a.plate_number.localeCompare(b.plate_number)))
+        setBatchOrders(prev => prev.map(o => o.id === orderId ? { ...o, vehicleNumber: res.data.plate_number, showVehicleDropdown: false } : o))
+        invalidateCache('/vehicles')
+      }
+    } catch (err) {
+      console.error("Failed to add vehicle:", err)
+      const errMsg = err.response?.data?.detail || "Failed to add vehicle to database."
+      setError(errMsg)
+    }
   }
 
   // Remove line item inside a specific order
@@ -1080,30 +1140,131 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-zinc-400 mb-1">Driver Name</label>
-                        <div className="relative">
-                          <Truck size={14} className="absolute left-3.5 top-3 text-zinc-550" />
-                          <input
-                            type="text"
-                            placeholder="e.g. John Doe"
-                            value={order.driverName}
-                            onChange={(e) => {
-                              setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, driverName: e.target.value } : o))
-                            }}
-                            className="w-full pl-10 pr-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
-                          />
+                        <div className="relative driver-search-container">
+                          <div className="flex gap-2 items-center">
+                            <div className="relative flex-1">
+                              <Truck size={14} className="absolute left-3.5 top-3 text-zinc-550" />
+                              <input
+                                type="text"
+                                placeholder="e.g. John Doe"
+                                value={order.driverName}
+                                onFocus={() => {
+                                  setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, showDriverDropdown: true } : o))
+                                }}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, driverName: val, showDriverDropdown: true } : o))
+                                }}
+                                className="w-full pl-10 pr-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
+                              />
+                            </div>
+                            {order.driverName && order.driverName.trim() && !drivers.some(d => d.name.toLowerCase() === order.driverName.trim().toLowerCase()) && (
+                              <button
+                                type="button"
+                                onClick={() => handleAddNewDriver(order.driverName.trim(), order.id)}
+                                className="flex items-center justify-center p-2 bg-purple-500/10 hover:bg-purple-500/25 border border-purple-500/30 text-purple-400 rounded-xl transition-all cursor-pointer h-[38px] w-[38px] shrink-0"
+                                title={`Add "${order.driverName.trim()}" as a new driver`}
+                              >
+                                <Plus size={16} />
+                              </button>
+                            )}
+                          </div>
+                          
+                          {/* Driver Dropdown */}
+                          {order.showDriverDropdown && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-900 border border-zinc-805 rounded-xl shadow-xl z-50 max-h-[160px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+                              <ul className="divide-y divide-zinc-850">
+                                {drivers
+                                  .filter(d => d.name.toLowerCase().includes(order.driverName.toLowerCase()))
+                                  .map(d => (
+                                    <li key={d.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, driverName: d.name, showDriverDropdown: false } : o))
+                                        }}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors flex justify-between items-center"
+                                      >
+                                        <span>{d.name}</span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                {drivers.filter(d => d.name.toLowerCase().includes(order.driverName.toLowerCase())).length === 0 && (
+                                  <li className="px-4 py-3 text-xs text-zinc-550 text-center">
+                                    No matching driver. Click the <span className="text-purple-400 font-semibold">+</span> button to add.
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       </div>
+
                       <div>
                         <label className="block text-[11px] font-semibold text-zinc-400 mb-1">Vehicle License Number</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. KDS-288AA"
-                          value={order.vehicleNumber}
-                          onChange={(e) => {
-                            setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, vehicleNumber: e.target.value } : o))
-                          }}
-                          className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
-                        />
+                        <div className="relative vehicle-search-container">
+                          <div className="flex gap-2 items-center">
+                            <div className="relative flex-1">
+                              <input
+                                type="text"
+                                placeholder="e.g. APP 483 EQ"
+                                value={order.vehicleNumber}
+                                onFocus={() => {
+                                  setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, showVehicleDropdown: true } : o))
+                                }}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, vehicleNumber: val, showVehicleDropdown: true } : o))
+                                }}
+                                onBlur={(e) => {
+                                  const val = e.target.value
+                                  if (val) {
+                                    setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, vehicleNumber: formatLicensePlate(val) } : o))
+                                  }
+                                }}
+                                className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
+                              />
+                            </div>
+                            {order.vehicleNumber && order.vehicleNumber.trim() && !vehicles.some(v => v.plate_number.toLowerCase() === formatLicensePlate(order.vehicleNumber).toLowerCase()) && (
+                              <button
+                                type="button"
+                                onClick={() => handleAddNewVehicle(order.vehicleNumber.trim(), order.id)}
+                                className="flex items-center justify-center p-2 bg-purple-500/10 hover:bg-purple-500/25 border border-purple-500/30 text-purple-400 rounded-xl transition-all cursor-pointer h-[38px] w-[38px] shrink-0"
+                                title={`Add "${formatLicensePlate(order.vehicleNumber)}" as a new vehicle`}
+                              >
+                                <Plus size={16} />
+                              </button>
+                            )}
+                          </div>
+                          
+                          {/* Vehicle Dropdown */}
+                          {order.showVehicleDropdown && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-900 border border-zinc-805 rounded-xl shadow-xl z-50 max-h-[160px] overflow-y-auto custom-product-dropdown-scroll backdrop-blur-md">
+                              <ul className="divide-y divide-zinc-850">
+                                {vehicles
+                                  .filter(v => v.plate_number.toLowerCase().replace(/\s+/g, '').includes(order.vehicleNumber.toLowerCase().replace(/\s+/g, '')))
+                                  .map(v => (
+                                    <li key={v.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, vehicleNumber: v.plate_number, showVehicleDropdown: false } : o))
+                                        }}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors flex justify-between items-center"
+                                      >
+                                        <span>{v.plate_number}</span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                {vehicles.filter(v => v.plate_number.toLowerCase().replace(/\s+/g, '').includes(order.vehicleNumber.toLowerCase().replace(/\s+/g, ''))).length === 0 && (
+                                  <li className="px-4 py-3 text-xs text-zinc-550 text-center">
+                                    No matching vehicle. Click the <span className="text-purple-400 font-semibold">+</span> button to add.
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

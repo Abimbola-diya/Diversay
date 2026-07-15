@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routes import auth, customers, products, orders, analytics, stores, drivers
+from routes import auth, customers, products, orders, analytics, stores, drivers, vehicles
 from config import get_settings
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -160,6 +160,28 @@ def seed_drivers():
     finally:
         db.close()
 
+def seed_vehicles():
+    from models import Vehicle
+    from routes.vehicles import format_plate_number
+    db = SessionLocal()
+    try:
+        if db.query(Vehicle).count() == 0:
+            raw_plates = [
+                "APP483EQ", "KTU316HP", "AGl 982 kk", "EKY357FD", 
+                "AGL92KM", "LSD829YA", "AGL94KM", "JJJ318GH", 
+                "GGE549DW", "JJJ322GH"
+            ]
+            for plate in raw_plates:
+                formatted = format_plate_number(plate)
+                db.add(Vehicle(plate_number=formatted))
+            db.commit()
+            logger.info("Vehicles seeded successfully!")
+    except Exception as e:
+        logger.error(f"Error seeding vehicles: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 # Create tables (with error handling in case DB is unavailable)
 try:
     Base.metadata.create_all(bind=engine)
@@ -226,6 +248,7 @@ try:
     seed_products()
     seed_stores()
     seed_drivers()
+    seed_vehicles()
 except Exception as e:
     logger.warning(f"Could not create tables or run migrations on startup: {e}. Database may be unavailable.")
 
@@ -259,6 +282,7 @@ app.include_router(orders.router)
 app.include_router(analytics.router)
 app.include_router(stores.router)
 app.include_router(drivers.router)
+app.include_router(vehicles.router)
 
 @app.get("/")
 def root():

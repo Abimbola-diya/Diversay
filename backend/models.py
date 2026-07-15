@@ -71,6 +71,12 @@ class Driver(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
 
+class Vehicle(Base):
+    __tablename__ = "vehicles"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    plate_number = Column(String, unique=True, index=True, nullable=False)
+
 class Product(Base):
     __tablename__ = "products"
     
