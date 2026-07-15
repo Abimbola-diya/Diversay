@@ -109,6 +109,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
   const [confirmAdd, setConfirmAdd] = useState(null)
   const [centralStoreId, setCentralStoreId] = useState('')
   const [storeInventories, setStoreInventories] = useState({})
@@ -290,14 +291,18 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   }, [isOpen])
 
   const handleSuccessClose = () => {
-    setShowSuccess(false)
-    const centralStore = stores.find(s => s.is_central)
-    const centralStoreIdStr = centralStore ? centralStore.id.toString() : ''
-    setBatchOrders([createInitialOrderObject(centralStoreIdStr)])
-    setStoreInventories({})
-    onClose()
-    window.dispatchEvent(new Event('order-created'))
-    navigate('/')
+    setIsClosing(true)
+    setTimeout(() => {
+      setShowSuccess(false)
+      setIsClosing(false)
+      const centralStore = stores.find(s => s.is_central)
+      const centralStoreIdStr = centralStore ? centralStore.id.toString() : ''
+      setBatchOrders([createInitialOrderObject(centralStoreIdStr)])
+      setStoreInventories({})
+      onClose()
+      window.dispatchEvent(new Event('order-created'))
+      navigate('/dashboard')
+    }, 500)
   }
 
   useEffect(() => {
@@ -821,15 +826,49 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onWheel={(e) => e.stopPropagation()}>
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
-        onClick={submitting || showSuccess ? undefined : onClose}
-      />
+    <>
+      <style>{`
+        @keyframes shrinkToSidebar {
+          0% {
+            transform: scale(1) translate3d(0, 0, 0);
+            opacity: 1;
+          }
+          100% {
+            transform: scale(0.05) translate3d(-45vw, -30vh, 0);
+            opacity: 0;
+          }
+        }
+        @keyframes backdropFadeOut {
+          0% {
+            opacity: 1;
+          }
+          100% {
+            opacity: 0;
+          }
+        }
+        .animate-shrink-to-sidebar {
+          animation: shrinkToSidebar 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+          transform-origin: center center;
+        }
+        .animate-backdrop-fade-out {
+          animation: backdropFadeOut 0.5s ease forwards;
+        }
+      `}</style>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onWheel={(e) => e.stopPropagation()}>
+        {/* Backdrop */}
+        <div
+          className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+            isClosing ? 'animate-backdrop-fade-out' : ''
+          }`}
+          onClick={submitting || showSuccess ? undefined : onClose}
+        />
 
-      {/* Modal Container */}
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative z-10 shadow-2xl animate-in scale-in duration-200">
+        {/* Modal Container */}
+        <div className={`bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative z-10 shadow-2xl ${
+          isClosing 
+            ? 'animate-shrink-to-sidebar' 
+            : 'animate-in scale-in duration-200'
+        }`}>
         {showSuccess ? (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-zinc-950 animate-in fade-in duration-300">
             <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 rounded-full flex items-center justify-center mb-6 animate-bounce">
@@ -1849,5 +1888,6 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         </div>
       )}
     </div>
+    </>
   )
 }
