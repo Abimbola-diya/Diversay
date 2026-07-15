@@ -58,3 +58,58 @@ def create_driver(
             status_code=status.HTTP_409_CONFLICT,
             detail="Driver with this name already exists"
         )
+
+@router.put("/{driver_id}", response_model=DriverResponse)
+def update_driver(
+    driver_id: int,
+    driver_in: DriverCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_write_access)
+):
+    """Update driver's name."""
+    clean_name = driver_in.name.strip()
+    if not clean_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Driver name cannot be empty"
+        )
+    
+    # Check if there is another driver with the same name
+    existing = db.query(Driver).filter(
+        Driver.name.ilike(clean_name),
+        Driver.id != driver_id
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Driver with this name already exists"
+        )
+        
+    driver = db.query(Driver).filter(Driver.id == driver_id).first()
+    if not driver:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Driver not found"
+        )
+        
+    driver.name = clean_name
+    db.commit()
+    db.refresh(driver)
+    return driver
+
+@router.delete("/{driver_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_driver(
+    driver_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_write_access)
+):
+    """Delete a driver."""
+    driver = db.query(Driver).filter(Driver.id == driver_id).first()
+    if not driver:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Driver not found"
+        )
+    db.delete(driver)
+    db.commit()
+    return None

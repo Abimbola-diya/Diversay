@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react'
+import { X, Plus, Trash2, Edit2, Calendar, User, Package, FileText, Truck, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react'
 import api, { getWithCache, invalidateCache } from '../services/api'
 import { useNavigate } from 'react-router-dom'
 
@@ -114,6 +114,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const [storeInventories, setStoreInventories] = useState({})
   const [drivers, setDrivers] = useState([])
   const [vehicles, setVehicles] = useState([])
+  const [actionItem, setActionItem] = useState(null)
+  const [actionInputVal, setActionInputVal] = useState('')
 
   const getDepartureStoreId = (order) => {
     if (order.pipelineType === '2-node') {
@@ -543,6 +545,64 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       setError(errMsg)
     } finally {
       setConfirmAdd(null)
+    }
+  }
+
+  const handleActionConfirm = async () => {
+    if (!actionItem) return
+    const { type } = actionItem
+
+    try {
+      setError(null)
+      if (type === 'edit_driver') {
+        const { driver } = actionItem
+        const cleanName = actionInputVal.trim()
+        if (!cleanName) {
+          setError('Driver name cannot be empty')
+          return
+        }
+        const res = await api.put(`/drivers/${driver.id}`, { name: cleanName })
+        if (res.data) {
+          setDrivers(prev => prev.map(d => d.id === driver.id ? res.data : d).sort((a, b) => a.name.localeCompare(b.name)))
+          // Also dynamically update any open batch orders displaying this driver name!
+          setBatchOrders(prev => prev.map(o => o.driverName === driver.name ? { ...o, driverName: res.data.name } : o))
+          invalidateCache('/drivers')
+        }
+      } else if (type === 'delete_driver') {
+        const { driver } = actionItem
+        await api.delete(`/drivers/${driver.id}`)
+        setDrivers(prev => prev.filter(d => d.id !== driver.id))
+        // Also dynamically clear/reset any open batch orders that had this driver selected!
+        setBatchOrders(prev => prev.map(o => o.driverName === driver.name ? { ...o, driverName: '' } : o))
+        invalidateCache('/drivers')
+      } else if (type === 'edit_vehicle') {
+        const { vehicle } = actionItem
+        const formatted = formatLicensePlate(actionInputVal)
+        if (!formatted) {
+          setError('Vehicle license number cannot be empty')
+          return
+        }
+        const res = await api.put(`/vehicles/${vehicle.id}`, { plate_number: formatted })
+        if (res.data) {
+          setVehicles(prev => prev.map(v => v.id === vehicle.id ? res.data : v).sort((a, b) => a.plate_number.localeCompare(b.plate_number)))
+          // Also dynamically update any open batch orders displaying this vehicle plate!
+          setBatchOrders(prev => prev.map(o => o.vehicleNumber === vehicle.plate_number ? { ...o, vehicleNumber: res.data.plate_number } : o))
+          invalidateCache('/vehicles')
+        }
+      } else if (type === 'delete_vehicle') {
+        const { vehicle } = actionItem
+        await api.delete(`/vehicles/${vehicle.id}`)
+        setVehicles(prev => prev.filter(v => v.id !== vehicle.id))
+        // Also dynamically clear/reset any open batch orders that had this vehicle selected!
+        setBatchOrders(prev => prev.map(o => o.vehicleNumber === vehicle.plate_number ? { ...o, vehicleNumber: '' } : o))
+        invalidateCache('/vehicles')
+      }
+      setActionItem(null)
+      setActionInputVal('')
+    } catch (err) {
+      console.error(`Failed to perform action ${type}:`, err)
+      const errMsg = err.response?.data?.detail || `Failed to perform action on database.`
+      setError(errMsg)
     }
   }
 
@@ -1226,16 +1286,41 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                 {drivers
                                   .filter(d => d.name.toLowerCase().includes(order.driverName.toLowerCase()))
                                   .map(d => (
-                                    <li key={d.id}>
+                                    <li key={d.id} className="group/item flex items-center justify-between hover:bg-zinc-800/60 transition-colors px-4 py-2.5">
                                       <button
                                         type="button"
                                         onClick={() => {
                                           setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, driverName: d.name, showDriverDropdown: false } : o))
                                         }}
-                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
+                                        className="flex-1 text-left text-sm text-zinc-300 hover:text-white transition-colors"
                                       >
-                                        <span>{d.name}</span>
+                                        {d.name}
                                       </button>
+                                      <div className="flex items-center gap-1.5 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setActionItem({ type: 'edit_driver', driver: d })
+                                            setActionInputVal(d.name)
+                                          }}
+                                          className="p-1 hover:bg-zinc-700/50 hover:text-amber-400 text-zinc-550 rounded-md transition-colors cursor-pointer"
+                                          title="Rename Driver"
+                                        >
+                                          <Edit2 size={13} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setActionItem({ type: 'delete_driver', driver: d })
+                                          }}
+                                          className="p-1 hover:bg-zinc-700/50 hover:text-red-400 text-zinc-550 rounded-md transition-colors cursor-pointer"
+                                          title="Delete Driver"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
                                     </li>
                                   ))}
                                 {drivers.filter(d => d.name.toLowerCase().includes(order.driverName.toLowerCase())).length === 0 && (
@@ -1293,16 +1378,41 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                 {vehicles
                                   .filter(v => v.plate_number.toLowerCase().replace(/\s+/g, '').includes(order.vehicleNumber.toLowerCase().replace(/\s+/g, '')))
                                   .map(v => (
-                                    <li key={v.id}>
+                                    <li key={v.id} className="group/item flex items-center justify-between hover:bg-zinc-800/60 transition-colors px-4 py-2.5">
                                       <button
                                         type="button"
                                         onClick={() => {
                                           setBatchOrders(prev => prev.map(o => o.id === order.id ? { ...o, vehicleNumber: v.plate_number, showVehicleDropdown: false } : o))
                                         }}
-                                        className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
+                                        className="flex-1 text-left text-sm text-zinc-300 hover:text-white transition-colors"
                                       >
-                                        <span>{v.plate_number}</span>
+                                        {v.plate_number}
                                       </button>
+                                      <div className="flex items-center gap-1.5 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setActionItem({ type: 'edit_vehicle', vehicle: v })
+                                            setActionInputVal(v.plate_number)
+                                          }}
+                                          className="p-1 hover:bg-zinc-700/50 hover:text-amber-400 text-zinc-550 rounded-md transition-colors cursor-pointer"
+                                          title="Rename Vehicle"
+                                        >
+                                          <Edit2 size={13} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setActionItem({ type: 'delete_vehicle', vehicle: v })
+                                          }}
+                                          className="p-1 hover:bg-zinc-700/50 hover:text-red-400 text-zinc-550 rounded-md transition-colors cursor-pointer"
+                                          title="Delete Vehicle"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
                                     </li>
                                   ))}
                                 {vehicles.filter(v => v.plate_number.toLowerCase().replace(/\s+/g, '').includes(order.vehicleNumber.toLowerCase().replace(/\s+/g, ''))).length === 0 && (
@@ -1670,6 +1780,69 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-emerald-600/10 hover:shadow-emerald-500/25 hover:-translate-y-0.5 transition-all"
               >
                 Yes, Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Item (Edit/Delete Driver/Vehicle) Modal Overlay */}
+      {actionItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-zinc-950 border border-zinc-800 p-6 rounded-2xl w-full max-w-sm shadow-2xl space-y-4 animate-in scale-in duration-200">
+            <h4 className="text-lg font-bold text-zinc-100">
+              {actionItem.type === 'edit_driver' && 'Rename Driver'}
+              {actionItem.type === 'delete_driver' && 'Delete Driver'}
+              {actionItem.type === 'edit_vehicle' && 'Edit Vehicle License'}
+              {actionItem.type === 'delete_vehicle' && 'Delete Vehicle'}
+            </h4>
+            
+            {/* Input field for edit actions */}
+            {(actionItem.type === 'edit_driver' || actionItem.type === 'edit_vehicle') ? (
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">
+                  {actionItem.type === 'edit_driver' ? 'Driver Name' : 'License Plate Number'}
+                </label>
+                <input
+                  type="text"
+                  value={actionInputVal}
+                  onChange={(e) => setActionInputVal(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 focus:border-zinc-700 rounded-xl text-zinc-150 text-sm focus:outline-none transition-colors"
+                  placeholder={actionItem.type === 'edit_driver' ? 'e.g. John Doe' : 'e.g. APP 483 EQ'}
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-400">
+                Are you sure you want to delete{' '}
+                <span className="font-semibold text-white">
+                  {actionItem.type === 'delete_driver' ? actionItem.driver.name : actionItem.vehicle.plate_number}
+                </span>
+                ? This action cannot be undone.
+              </p>
+            )}
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActionItem(null)
+                  setActionInputVal('')
+                }}
+                className="px-4 py-2 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900 text-zinc-400 hover:text-white text-xs font-semibold rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleActionConfirm}
+                className={`px-4 py-2 text-xs font-semibold rounded-xl shadow-lg transition-all hover:-translate-y-0.5 ${
+                  actionItem.type.startsWith('delete')
+                    ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/10 hover:shadow-red-500/25'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/10 hover:shadow-emerald-500/25'
+                }`}
+              >
+                {actionItem.type.startsWith('delete') ? 'Delete' : 'Save Changes'}
               </button>
             </div>
           </div>
