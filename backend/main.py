@@ -157,6 +157,29 @@ try:
         except Exception as e:
             logger.warning(f"Could not add PIECES to unittype enum: {e}")
 
+        # Migrate all old unit type values to PIECES and rebuild the enum
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                # 1. Convert columns to VARCHAR so we can update freely
+                conn.execute(text("ALTER TABLE products ALTER COLUMN default_unit TYPE VARCHAR USING default_unit::VARCHAR;"))
+                conn.execute(text("ALTER TABLE order_line_items ALTER COLUMN unit TYPE VARCHAR USING unit::VARCHAR;"))
+                
+                # 2. Normalize all non-CARTON, non-PIECES values to PIECES
+                conn.execute(text("UPDATE products SET default_unit = 'PIECES' WHERE default_unit NOT IN ('CARTON', 'PIECES');"))
+                conn.execute(text("UPDATE order_line_items SET unit = 'PIECES' WHERE unit NOT IN ('CARTON', 'PIECES');"))
+                
+                # 3. Drop old enum type and recreate with only valid values
+                conn.execute(text("DROP TYPE IF EXISTS unittype CASCADE;"))
+                conn.execute(text("CREATE TYPE unittype AS ENUM ('CARTON', 'PIECES');"))
+                
+                # 4. Convert columns back to the new enum
+                conn.execute(text("ALTER TABLE products ALTER COLUMN default_unit TYPE unittype USING default_unit::unittype;"))
+                conn.execute(text("ALTER TABLE order_line_items ALTER COLUMN unit TYPE unittype USING unit::unittype;"))
+                
+                logger.info("Successfully migrated unittype enum to CARTON/PIECES only.")
+        except Exception as e:
+            logger.warning(f"Could not migrate unittype enum values: {e}")
+
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS requesting_admin BOOLEAN DEFAULT FALSE;"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role_changed_at TIMESTAMP;"))
