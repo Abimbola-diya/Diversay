@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle } from 'lucide-react'
-import api, { getWithCache } from '../services/api'
+import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle, RefreshCw } from 'lucide-react'
+import api, { getWithCache, invalidateCache } from '../services/api'
 
 const getConversionFactor = (productName) => {
   const nameLower = (productName || '').toLowerCase();
@@ -119,6 +119,15 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     return ''
   }
 
+  const getFilteredProductsForOrder = (order) => {
+    const departureStoreId = getDepartureStoreId(order)
+    if (!departureStoreId) return products
+    const inventory = storeInventories[departureStoreId]
+    if (!inventory) return products
+    const storeProductIds = new Set(inventory.map(item => item.product_id))
+    return products.filter(p => storeProductIds.has(p.id))
+  }
+
   const getAvailableStock = (order, productId) => {
     const storeId = getDepartureStoreId(order)
     if (!storeId || !productId) return null
@@ -128,9 +137,13 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     return invItem ? invItem.stock : 0
   }
 
-  const fetchStoreInventory = async (storeId) => {
-    if (!storeId || storeInventories[storeId]) return
+  const fetchStoreInventory = async (storeId, force = false) => {
+    if (!storeId) return
+    if (!force && storeInventories[storeId]) return
     try {
+      if (force) {
+        invalidateCache(`/stores/${storeId}/inventory`)
+      }
       const res = await getWithCache(`/stores/${storeId}/inventory`)
       setStoreInventories(prev => ({
         ...prev,
@@ -245,6 +258,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (isOpen) {
+      setStoreInventories({})
       fetchFormData()
     }
   }, [isOpen])
@@ -1115,17 +1129,38 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                               />
 
                               {item.product_id && (
-                                <div className="absolute right-2.5 top-[29px] md:top-[9px] flex items-center gap-1 text-[9px] font-bold text-zinc-400 bg-zinc-900/90 px-2 py-0.5 rounded border border-zinc-800 pointer-events-none select-none">
-                                  Stock: <span className={!departureStoreId ? "text-zinc-500" : (availableStock > 0 ? "text-emerald-400" : "text-red-400")}>
+                                <div className="absolute right-2.5 top-[29px] md:top-[9px] flex items-center gap-1 text-[9px] font-bold text-zinc-400 bg-zinc-900/90 px-2 py-0.5 rounded border border-zinc-800 z-10 select-none">
+                                  <span>Stock:</span>
+                                  <span className={!departureStoreId ? "text-zinc-500" : (availableStock > 0 ? "text-emerald-400" : "text-red-400")}>
                                     {!departureStoreId ? "Select Store" : (availableStock !== null ? `${availableStock} Pcs (${parseFloat((availableStock / (selectedProduct ? getConversionFactor(selectedProduct.name) : 96)).toFixed(2))} Ctn)` : '...')}
                                   </span>
+                                  {departureStoreId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        // Force refresh the specific store's inventory
+                                        invalidateCache(`/stores/${departureStoreId}/inventory`)
+                                        // Clear it in state first to show loading state
+                                        setStoreInventories(prev => {
+                                          const copy = { ...prev }
+                                          delete copy[departureStoreId]
+                                          return copy
+                                        })
+                                        fetchStoreInventory(departureStoreId, true)
+                                      }}
+                                      className="ml-1 text-zinc-500 hover:text-white transition-colors flex items-center"
+                                      title="Refresh Stock"
+                                    >
+                                      <RefreshCw size={10} />
+                                    </button>
+                                  )}
                                 </div>
                               )}
                               
                               {activeProductSearch?.orderId === order.id && activeProductSearch?.itemIdx === itemIdx && (
                                 <ProductSearchDropdown
                                   query={item.searchQuery || ''}
-                                  products={products}
+                                  products={getFilteredProductsForOrder(order)}
                                   onSelect={(product) => {
                                     handleLineItemChange(order.id, itemIdx, 'product_id', product.id.toString())
                                     handleLineItemChange(order.id, itemIdx, 'searchQuery', product.name)

@@ -20,7 +20,13 @@ api.interceptors.request.use((config) => {
 
 // Handle responses
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = response.config?.method?.toUpperCase()
+    if (method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      clearCache()
+    }
+    return response
+  },
   (error) => {
     if (error.response?.status === 401) {
       const isLoginRequest = error.config?.url?.includes('/auth/login')
