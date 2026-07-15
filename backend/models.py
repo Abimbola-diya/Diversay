@@ -22,13 +22,7 @@ class ProductCategory(str, enum.Enum):
 
 class UnitType(str, enum.Enum):
     CARTON = "Carton"
-    KEG = "Keg"
-    BAG = "Bag"
     PIECES = "Pieces"
-    PCS = "Pcs"
-    DRUM = "Drum"
-    BOTTLE = "Bottle"
-    SACHET = "Sachet"
 
 class ActionType(str, enum.Enum):
     CREATE = "create"
@@ -77,7 +71,7 @@ class Product(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False, unique=True)
     category = Column(Enum(ProductCategory), default=ProductCategory.OTHER)
-    default_unit = Column(Enum(UnitType), default=UnitType.CARTON)
+    default_unit = Column(Enum(UnitType), default=UnitType.PIECES)
     brand = Column(String, default="DSL", server_default="DSL")
     unit_price = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -125,7 +119,7 @@ class OrderLineItem(Base):
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     quantity = Column(Float, nullable=False)
-    unit = Column(Enum(UnitType), default=UnitType.CARTON)
+    unit = Column(Enum(UnitType), default=UnitType.PIECES)
     unit_price = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     

@@ -82,7 +82,7 @@ def seed_products():
                 new_product = Product(
                     name=name,
                     category=ProductCategory.OTHER,
-                    default_unit=UnitType.CARTON,
+                    default_unit=UnitType.PIECES,
                     unit_price=0.0
                 )
                 db.add(new_product)
@@ -147,11 +147,22 @@ def seed_stores():
 # Create tables (with error handling in case DB is unavailable)
 try:
     Base.metadata.create_all(bind=engine)
+    
+    # Run dialect-specific migrations/patches
+    if engine.dialect.name == "postgresql":
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                conn.execute(text("ALTER TYPE unittype ADD VALUE IF NOT EXISTS 'PIECES';"))
+                logger.info("Successfully ensured 'PIECES' is in unittype enum.")
+        except Exception as e:
+            logger.warning(f"Could not add PIECES to unittype enum: {e}")
+
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS requesting_admin BOOLEAN DEFAULT FALSE;"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role_changed_at TIMESTAMP;"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_write_access BOOLEAN DEFAULT FALSE;"))
         conn.execute(text("UPDATE users SET is_active = TRUE;"))
+        conn.execute(text("UPDATE products SET default_unit = 'PIECES';"))
         conn.commit()
     seed_admin_user()
     seed_products()

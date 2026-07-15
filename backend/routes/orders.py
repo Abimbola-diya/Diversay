@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from database import get_db
-from models import User, Order, OrderLineItem, Product, Customer, AuditLog, OrderStatus, ActionType, Store, StoreInventory
+from models import User, Order, OrderLineItem, Product, Customer, AuditLog, OrderStatus, ActionType, Store, StoreInventory, UnitType
 from schemas import OrderCreate, OrderUpdate, OrderStatusUpdate, OrderResponse, OrderDetailResponse, AuditLogResponse, MarkDeliveredRequest
 from auth import get_current_user, check_admin, check_write_access
 from utils import calculate_order_status, calculate_delivery_duration, generate_order_number, get_order_with_details, calculate_hours_overdue
@@ -11,6 +11,12 @@ from typing import List, Optional
 import json
 
 router = APIRouter(prefix="/orders", tags=["orders"])
+
+def get_conversion_factor(product_name: str) -> float:
+    name_lower = (product_name or "").lower()
+    if any(x in name_lower for x in ["50g", "50 g", "50gram", "50 gram", "50gr", "50 gr", "50gm", "50 gm"]):
+        return 192.0
+    return 96.0
 
 def create_audit_log(db: Session, user_id: int, action: ActionType, table_name: str, record_id: int, details: Optional[dict] = None):
     """Helper to create audit log entry."""
@@ -189,7 +195,9 @@ def create_order(
                     stock=0.0
                 )
                 db.add(src_inv)
-            src_inv.stock -= item.quantity
+            
+            factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
+            src_inv.stock -= item.quantity * factor
             
         # Crediting/debiting stock to destination store
         if order_create.destination_store_id:
@@ -205,14 +213,15 @@ def create_order(
                 )
                 db.add(dest_inv)
             
+            factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
             # Credit the destination (regional) store
-            dest_inv.stock += item.quantity
+            dest_inv.stock += item.quantity * factor
             
             # If source store is central, then this is a 3-node supply: Central -> Regional -> Customer.
             # In a 3-node supply, the regional store receives it (+quantity) and then ships it to customer (-quantity).
             source_store = db.query(Store).filter(Store.id == order_create.source_store_id).first()
             if source_store and source_store.is_central:
-                dest_inv.stock -= item.quantity
+                dest_inv.stock -= item.quantity * factor
     
     db.flush()
     

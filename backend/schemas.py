@@ -94,7 +94,7 @@ class CustomerSearchResponse(BaseModel):
 class ProductCreate(BaseModel):
     name: str
     category: ProductCategory = ProductCategory.OTHER
-    default_unit: UnitType = UnitType.CARTON
+    default_unit: UnitType = UnitType.PIECES
     brand: Optional[str] = "DSL"
     unit_price: float = 0.0
 

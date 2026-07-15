@@ -1,6 +1,39 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+
+const getConversionFactor = (productName) => {
+  const nameLower = (productName || '').toLowerCase();
+  if (
+    nameLower.includes('50g') ||
+    nameLower.includes('50 g') ||
+    nameLower.includes('50gram') ||
+    nameLower.includes('50 gram') ||
+    nameLower.includes('50gr') ||
+    nameLower.includes('50 gr') ||
+    nameLower.includes('50gm') ||
+    nameLower.includes('50 gm')
+  ) {
+    return 192;
+  }
+  return 96;
+};
+
+const displayStockAndUnit = (stockValue, productName, targetUnit) => {
+  if (targetUnit === 'Cartons') {
+    const factor = getConversionFactor(productName);
+    const converted = parseFloat((stockValue / factor).toFixed(2));
+    return {
+      value: converted,
+      unit: converted === 1 ? 'Carton' : 'Cartons'
+    };
+  } else {
+    return {
+      value: stockValue,
+      unit: stockValue === 1 ? 'Piece' : 'Pieces'
+    };
+  }
+};
 import api, { getWithCache, isCached, invalidateCache } from '../services/api'
 import {
   ResponsiveContainer,
@@ -117,6 +150,7 @@ export default function StoreDetailPage() {
   const [sortBy, setSortBy] = useState('name-asc')
   const [isSortOpen, setIsSortOpen] = useState(false)
   const [viewMode, setViewMode] = useState('grid')
+  const [viewUnit, setViewUnit] = useState('Pieces')
   
   const [adjustItem, setAdjustItem] = useState(null)
   const [adjustValue, setAdjustValue] = useState('')
@@ -131,7 +165,7 @@ export default function StoreDetailPage() {
   const [selectedProductId, setSelectedProductId] = useState('')
   const [newProdName, setNewProdName] = useState('')
   const [newProdCategory, setNewProdCategory] = useState('Other')
-  const [newProdUnit, setNewProdUnit] = useState('Carton')
+  const [newProdUnit, setNewProdUnit] = useState('Pieces')
   const [initialStock, setInitialStock] = useState('0')
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState('')
@@ -340,7 +374,7 @@ export default function StoreDetailPage() {
     setSelectedProductId('')
     setNewProdName('')
     setNewProdCategory('Other')
-    setNewProdUnit('Carton')
+    setNewProdUnit('Pieces')
     setInitialStock('0')
     setModalError('')
     
@@ -884,6 +918,26 @@ export default function StoreDetailPage() {
             )}
           </div>
 
+          {/* Unit View Selector */}
+          <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setViewUnit('Pieces')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors
+                ${viewUnit === 'Pieces' ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-500 hover:text-white'}`}
+            >
+              Pieces (Pcs)
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewUnit('Cartons')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors
+                ${viewUnit === 'Cartons' ? 'bg-zinc-800 text-white shadow-md' : 'text-zinc-550 hover:text-white'}`}
+            >
+              Cartons
+            </button>
+          </div>
+
           {/* Grid / List View Toggle */}
           <div className="flex bg-zinc-950 p-1 border border-zinc-800 rounded-xl">
             <button
@@ -973,16 +1027,16 @@ export default function StoreDetailPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className={`font-black text-sm ${isOut ? 'text-red-400' : isLow ? 'text-amber-400' : 'text-zinc-100'}`}>
-                          {item.stock}
+                          {displayStockAndUnit(item.stock, item.product_name, viewUnit).value}
                         </span>
                         <span className="text-[10px] text-zinc-500 font-bold ml-1 uppercase">
-                          {item.default_unit.toLowerCase()}{item.stock !== 1 ? 's' : ''}
+                          {displayStockAndUnit(item.stock, item.product_name, viewUnit).unit}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-zinc-400 font-bold text-sm">
-                        <span>{item.reorder_level ?? 15.0}</span>
+                        <span>{displayStockAndUnit(item.reorder_level ?? 15.0, item.product_name, viewUnit).value}</span>
                         <span className="text-[10px] text-zinc-500 font-bold ml-1 uppercase">
-                          {item.default_unit.toLowerCase()}{(item.reorder_level ?? 15.0) !== 1 ? 's' : ''}
+                          {displayStockAndUnit(item.reorder_level ?? 15.0, item.product_name, viewUnit).unit}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -1101,10 +1155,10 @@ export default function StoreDetailPage() {
                           ? 'text-amber-400' 
                           : 'text-white'}`}
                     >
-                      {item.stock} {item.default_unit.toLowerCase()}{item.stock !== 1 ? 's' : ''}
+                      {displayStockAndUnit(item.stock, item.product_name, viewUnit).value} {displayStockAndUnit(item.stock, item.product_name, viewUnit).unit}
                     </span>
                     <span className="text-[9px] text-zinc-500 font-medium block mt-0.5">
-                      Reorder: {item.reorder_level ?? 15.0} {item.default_unit.toLowerCase()}(s)
+                      Reorder: {displayStockAndUnit(item.reorder_level ?? 15.0, item.product_name, viewUnit).value} {displayStockAndUnit(item.reorder_level ?? 15.0, item.product_name, viewUnit).unit}
                     </span>
                   </div>
 
@@ -1327,13 +1381,8 @@ export default function StoreDetailPage() {
                           onChange={(e) => setNewProdUnit(e.target.value)}
                           className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none cursor-pointer"
                         >
+                          <option value="Pieces">Pieces (Pcs)</option>
                           <option value="Carton">Carton</option>
-                          <option value="Keg">Keg</option>
-                          <option value="Bag">Bag</option>
-                          <option value="Pieces">Pieces</option>
-                          <option value="Pcs">Pcs</option>
-                          <option value="Drum">Drum</option>
-                          <option value="Bottle">Bottle</option>
                         </select>
                       </div>
                     </div>

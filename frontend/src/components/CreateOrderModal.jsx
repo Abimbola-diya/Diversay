@@ -2,6 +2,23 @@ import React, { useState, useEffect, useRef } from 'react'
 import { X, Plus, Trash2, Calendar, User, Package, FileText, Truck, AlertCircle } from 'lucide-react'
 import api, { getWithCache } from '../services/api'
 
+const getConversionFactor = (productName) => {
+  const nameLower = (productName || '').toLowerCase();
+  if (
+    nameLower.includes('50g') ||
+    nameLower.includes('50 g') ||
+    nameLower.includes('50gram') ||
+    nameLower.includes('50 gram') ||
+    nameLower.includes('50gr') ||
+    nameLower.includes('50 gr') ||
+    nameLower.includes('50gm') ||
+    nameLower.includes('50 gm')
+  ) {
+    return 192;
+  }
+  return 96;
+};
+
 // Dropdown component for fuzzy product search
 const ProductSearchDropdown = ({ query, products, onSelect }) => {
   // Filter products matching query case-insensitively
@@ -149,7 +166,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       { id: Math.random().toString(36).substr(2, 9), brand: 'DSL', waybillNumber: '', invoiceNumber: '' }
     ],
     lineItems: [
-      { product_id: '', quantity: 1, unit: 'Carton', searchQuery: '' }
+      { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }
     ]
   })
 
@@ -399,7 +416,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       if (o.id === orderId) {
         return {
           ...o,
-          lineItems: [...o.lineItems, { product_id: '', quantity: 1, unit: 'Carton', searchQuery: '' }]
+          lineItems: [...o.lineItems, { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }]
         }
       }
       return o
@@ -1067,7 +1084,10 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                       {order.lineItems.map((item, itemIdx) => {
                         const departureStoreId = getDepartureStoreId(order)
                         const availableStock = item.product_id ? getAvailableStock(order, item.product_id) : null
-                        const isExceeded = availableStock !== null && parseFloat(item.quantity || 0) > availableStock
+                        const selectedProduct = item.product_id ? products.find(p => p.id === parseInt(item.product_id)) : null
+                        const factor = (item.unit === 'Carton' && selectedProduct) ? getConversionFactor(selectedProduct.name) : 1
+                        const quantityInPcs = parseFloat(item.quantity || 0) * factor
+                        const isExceeded = availableStock !== null && quantityInPcs > availableStock
 
                         return (
                           <div 
@@ -1097,7 +1117,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                               {item.product_id && (
                                 <div className="absolute right-2.5 top-[29px] md:top-[9px] flex items-center gap-1 text-[9px] font-bold text-zinc-400 bg-zinc-900/90 px-2 py-0.5 rounded border border-zinc-800 pointer-events-none select-none">
                                   Stock: <span className={!departureStoreId ? "text-zinc-500" : (availableStock > 0 ? "text-emerald-400" : "text-red-400")}>
-                                    {!departureStoreId ? "Select Store" : (availableStock ?? '...')}
+                                    {!departureStoreId ? "Select Store" : (availableStock !== null ? `${availableStock} Pcs (${parseFloat((availableStock / (selectedProduct ? getConversionFactor(selectedProduct.name) : 96)).toFixed(2))} Ctn)` : '...')}
                                   </span>
                                 </div>
                               )}
@@ -1143,11 +1163,8 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                 onChange={(e) => handleLineItemChange(order.id, itemIdx, 'unit', e.target.value)}
                                 className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
                               >
+                                <option value="Pieces">Pieces (Pcs)</option>
                                 <option value="Carton">Carton</option>
-                                <option value="Keg">Keg</option>
-                                <option value="Bag">Bag</option>
-                                <option value="Pieces">Pieces</option>
-                                <option value="Sachet">Sachet</option>
                               </select>
                             </div>
 

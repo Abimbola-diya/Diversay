@@ -2,6 +2,23 @@ import React, { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import api, { getWithCache, isCached } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
+
+const getConversionFactor = (productName) => {
+  const nameLower = (productName || '').toLowerCase();
+  if (
+    nameLower.includes('50g') ||
+    nameLower.includes('50 g') ||
+    nameLower.includes('50gram') ||
+    nameLower.includes('50 gram') ||
+    nameLower.includes('50gr') ||
+    nameLower.includes('50 gr') ||
+    nameLower.includes('50gm') ||
+    nameLower.includes('50 gm')
+  ) {
+    return 192;
+  }
+  return 96;
+};
 import AccessGatewayModal from '../components/AccessGatewayModal'
 import {
   ArrowLeft,
@@ -1084,11 +1101,8 @@ export default function OrderDetailPage() {
                         }}
                         className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                       >
+                        <option value="Pieces">Pieces (Pcs)</option>
                         <option value="Carton">Carton</option>
-                        <option value="Keg">Keg</option>
-                        <option value="Bag">Bag</option>
-                        <option value="Pieces">Pieces</option>
-                        <option value="Sachet">Sachet</option>
                       </select>
                     </div>
 
@@ -1228,8 +1242,10 @@ export default function OrderDetailPage() {
                             </div>
                             {getLineItemDiffMarker(item)}
                           </td>
-                          <td className={`px-4 py-4 text-sm text-right capitalize ${isItemDiff ? 'text-yellow-500/90 font-medium' : 'text-zinc-400'}`}>{item.unit}</td>
-                          <td className={`px-4 py-4 text-sm text-center font-mono ${isItemDiff ? 'text-yellow-500 font-bold' : 'text-zinc-300'}`}>{item.quantity}</td>
+                          <td className={`px-4 py-4 text-sm text-right capitalize ${isItemDiff ? 'text-yellow-500/90 font-medium' : 'text-zinc-400'}`}>{item.unit === 'Pieces' ? 'Pieces (Pcs)' : item.unit}</td>
+                          <td className={`px-4 py-4 text-sm text-center font-mono ${isItemDiff ? 'text-yellow-500 font-bold' : 'text-zinc-300'}`}>
+                            {item.quantity} {item.unit === 'Carton' && `(${item.quantity * getConversionFactor(item.product_name)} Pcs)`}
+                          </td>
                           <td className="px-4 py-4 text-sm text-center text-zinc-400" style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.unit_price)}</td>
                           <td className={`px-4 py-4 text-sm text-center font-semibold ${isItemDiff ? 'text-yellow-500' : 'text-white'}`} style={{ fontFamily: '"Lora", Georgia, serif' }}>{formatCurrency(item.total_price || (item.unit_price * item.quantity))}</td>
                         </tr>
