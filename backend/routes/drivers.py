@@ -39,14 +39,22 @@ def create_driver(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Driver name cannot be empty"
         )
+    from sqlalchemy.exc import IntegrityError
     existing = db.query(Driver).filter(Driver.name.ilike(clean_name)).first()
     if existing:
+        return existing
+    try:
+        new_driver = Driver(name=clean_name)
+        db.add(new_driver)
+        db.commit()
+        db.refresh(new_driver)
+        return new_driver
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(Driver).filter(Driver.name.ilike(clean_name)).first()
+        if existing:
+            return existing
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Driver with this name already exists"
         )
-    new_driver = Driver(name=clean_name)
-    db.add(new_driver)
-    db.commit()
-    db.refresh(new_driver)
-    return new_driver

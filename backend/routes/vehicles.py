@@ -46,14 +46,22 @@ def create_driver(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Vehicle license number cannot be empty"
         )
+    from sqlalchemy.exc import IntegrityError
     existing = db.query(Vehicle).filter(Vehicle.plate_number == formatted).first()
     if existing:
+        return existing
+    try:
+        new_vehicle = Vehicle(plate_number=formatted)
+        db.add(new_vehicle)
+        db.commit()
+        db.refresh(new_vehicle)
+        return new_vehicle
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(Vehicle).filter(Vehicle.plate_number == formatted).first()
+        if existing:
+            return existing
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Vehicle with this plate number already exists"
         )
-    new_vehicle = Vehicle(plate_number=formatted)
-    db.add(new_vehicle)
-    db.commit()
-    db.refresh(new_vehicle)
-    return new_vehicle
