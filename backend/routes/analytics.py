@@ -62,8 +62,9 @@ def get_dashboard_metrics(
     ]
     delivered_this_week = len(orders_week)
     
-    # Distinct registered customers from the database
-    total_customers = db.query(Customer).filter(Customer.is_deleted == False).count()
+    # Number of distinct customers that have placed an order this week
+    weekly_customer_ids = {o.customer_id for o in orders_week if o.customer_id}
+    total_customers = len(weekly_customer_ids)
     
     status_counts = {}
     for order in all_orders:
