@@ -164,15 +164,19 @@ try:
                 conn.execute(text("ALTER TABLE products ALTER COLUMN default_unit TYPE VARCHAR USING default_unit::VARCHAR;"))
                 conn.execute(text("ALTER TABLE order_line_items ALTER COLUMN unit TYPE VARCHAR USING unit::VARCHAR;"))
                 
-                # 2. Normalize all non-CARTON, non-PIECES values to PIECES
-                conn.execute(text("UPDATE products SET default_unit = 'PIECES' WHERE default_unit NOT IN ('CARTON', 'PIECES');"))
-                conn.execute(text("UPDATE order_line_items SET unit = 'PIECES' WHERE unit NOT IN ('CARTON', 'PIECES');"))
+                # 2. Normalize carton-like values to CARTON
+                conn.execute(text("UPDATE products SET default_unit = 'CARTON' WHERE UPPER(default_unit) IN ('CARTON', 'CARTONS');"))
+                conn.execute(text("UPDATE order_line_items SET unit = 'CARTON' WHERE UPPER(unit) IN ('CARTON', 'CARTONS');"))
                 
-                # 3. Drop old enum type and recreate with only valid values
+                # 3. Normalize all other/invalid/null values to PIECES
+                conn.execute(text("UPDATE products SET default_unit = 'PIECES' WHERE default_unit IS NULL OR default_unit NOT IN ('CARTON');"))
+                conn.execute(text("UPDATE order_line_items SET unit = 'PIECES' WHERE unit IS NULL OR unit NOT IN ('CARTON');"))
+                
+                # 4. Drop old enum type and recreate with only valid values
                 conn.execute(text("DROP TYPE IF EXISTS unittype CASCADE;"))
                 conn.execute(text("CREATE TYPE unittype AS ENUM ('CARTON', 'PIECES');"))
                 
-                # 4. Convert columns back to the new enum
+                # 5. Convert columns back to the new enum
                 conn.execute(text("ALTER TABLE products ALTER COLUMN default_unit TYPE unittype USING default_unit::unittype;"))
                 conn.execute(text("ALTER TABLE order_line_items ALTER COLUMN unit TYPE unittype USING unit::unittype;"))
                 
