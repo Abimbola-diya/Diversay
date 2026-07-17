@@ -116,7 +116,7 @@ def create_customer(
         name=customer.name,
         address=customer.address,
         city=customer.city,
-        state=customer.state,
+        state=customer.state.strip().upper() if customer.state else None,
         contact_number=customer.contact_number,
         email=customer.email,
         created_by_id=current_user.id
@@ -159,6 +159,8 @@ def update_customer(
     
     update_data = customer_update.dict(exclude_unset=True)
     for field, value in update_data.items():
+        if field == "state" and value:
+            value = value.strip().upper()
         setattr(customer, field, value)
     
     db.commit()
@@ -268,7 +270,7 @@ def upload_customers_excel(
                     name=customer_data.get('name'),
                     address=customer_data.get('address'),
                     city=customer_data.get('city'),
-                    state=customer_data.get('state'),
+                    state=customer_data.get('state').strip().upper() if customer_data.get('state') else None,
                     contact_number=customer_data.get('contact_number'),
                     email=customer_data.get('email'),
                     created_by_id=current_user.id

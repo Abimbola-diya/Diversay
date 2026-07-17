@@ -916,6 +916,34 @@ def delete_order(
             detail="Order not found"
         )
     
+    # Revert inventory stock levels for each line item in the deleted order
+    for item in order.line_items:
+        product = item.product
+        factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
+        change_qty = item.quantity * factor
+        
+        # Revert source store debit (add it back)
+        if order.source_store_id:
+            src_inv = db.query(StoreInventory).filter(
+                StoreInventory.store_id == order.source_store_id,
+                StoreInventory.product_id == item.product_id
+            ).first()
+            if src_inv:
+                src_inv.stock += change_qty
+                
+        # Revert destination store credit (subtract it back)
+        if order.destination_store_id:
+            dest_inv = db.query(StoreInventory).filter(
+                StoreInventory.store_id == order.destination_store_id,
+                StoreInventory.product_id == item.product_id
+            ).first()
+            if dest_inv:
+                dest_inv.stock -= change_qty
+                
+                source_store = db.query(Store).filter(Store.id == order.source_store_id).first()
+                if source_store and source_store.is_central:
+                    dest_inv.stock += change_qty
+
     order.is_deleted = True
     
     create_audit_log(

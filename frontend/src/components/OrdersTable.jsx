@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import api, { getWithCache, isCached } from '../services/api'
-import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar, ArrowRight, MapPin } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar, ArrowRight, MapPin, Trash2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Link, useLocation } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 
 // Module-level state — survives component unmount/remount during route navigation
 let _cached = null
@@ -10,6 +11,7 @@ let _cached = null
 export default function OrdersTable() {
   const location = useLocation()
   const navState = location.state || {}
+  const { hasWriteAccess } = useAuth()
 
   const [orders, setOrders] = useState(() => _cached?.orders ?? [])
   const [loading, setLoading] = useState(() => !_cached || !!location.state)
@@ -100,6 +102,20 @@ export default function OrdersTable() {
       window.removeEventListener('order-created', handleOrderCreated)
     }
   }, [])
+
+  const handleDeleteOrder = async (orderId, orderNumber) => {
+    if (!window.confirm(`Are you sure you want to delete order ${orderNumber}? This action cannot be undone and will restore stock inventory levels.`)) {
+      return
+    }
+    try {
+      await api.delete(`/orders/${orderId}`)
+      alert(`Order ${orderNumber} deleted successfully.`)
+      fetchOrders()
+    } catch (err) {
+      console.error("Failed to delete order:", err)
+      alert(err.response?.data?.detail || "Failed to delete order. Please try again.")
+    }
+  }
 
   const fetchOrders = async () => {
     const requestId = ++fetchRequestRef.current
@@ -683,8 +699,22 @@ export default function OrdersTable() {
 
                     {/* Header Row */}
                     <div className="flex justify-between items-center">
-                      <div className="text-xl font-black tracking-tighter uppercase text-white flex items-center">
-                        DIVERSAY<span className="text-red-500 ml-0.5">*</span>
+                      <div className="text-xl font-black tracking-tighter uppercase text-white flex items-center gap-3">
+                        <span>DIVERSAY<span className="text-red-500 ml-0.5">*</span></span>
+                        {hasWriteAccess && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              e.preventDefault()
+                              handleDeleteOrder(order.id, order.order_number)
+                            }}
+                            className="p-1 bg-red-950/20 text-red-500 hover:text-red-400 hover:bg-red-900/10 rounded border border-red-900/30 hover:border-red-500/50 transition-all cursor-pointer z-30 flex items-center justify-center"
+                            title="Delete Order"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-4 text-center">

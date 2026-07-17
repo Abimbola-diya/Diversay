@@ -987,11 +987,128 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                         )}
                       </div>
                     </div>
+                  {/* Step 1.5: Fulfillment Route Pipeline */}
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                      <Truck size={14} /> Fulfillment Route Pipeline
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Regional Store Selector */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                          Regional Store <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          required
+                          value={order.regionalStoreId || ''}
+                          onChange={(e) => {
+                            handleRoutingChange(order.id, { regionalStoreId: e.target.value })
+                          }}
+                          className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
+                        >
+                          <option value="">-- Select Store --</option>
+                          {stores.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} {s.is_central ? '(Central HQ)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                    {/* Invoices & Deliveries List */}
-                    <div className="space-y-3 pt-2">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                      {/* Pipeline Type selector */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                          Routing Model
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 bg-zinc-950/60 p-1 border border-zinc-800 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => handleRoutingChange(order.id, { pipelineType: '2-node' })}
+                            className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                              order.pipelineType === '2-node'
+                                ? 'bg-zinc-800 text-emerald-400 shadow-md border border-zinc-700/50'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            2-Node Direct
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRoutingChange(order.id, { pipelineType: '3-node' })}
+                            className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                              order.pipelineType === '3-node'
+                                ? 'bg-zinc-800 text-emerald-400 shadow-md border border-zinc-700/50'
+                                : 'text-zinc-500 hover:text-zinc-300'
+                            }`}
+                          >
+                            3-Node Supply
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual Routing Pipeline diagram */}
+                    <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 mt-3 flex flex-col items-center justify-center space-y-3 min-h-[90px] overflow-hidden">
+                      <span className="text-[9px] uppercase tracking-widest text-zinc-550 font-bold">Route Path Preview</span>
+                      
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm font-semibold w-full">
+                        {order.pipelineType === '3-node' && (
+                          <>
+                            {/* Node 1: Lagos Central Store */}
+                            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
+                              <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">Supply Source</span>
+                              <span className="text-zinc-200 text-xs truncate block">Lagos Store (HQ)</span>
+                            </div>
+                            
+                            {/* Supply arrow */}
+                            <div className="flex flex-col items-center text-[9px] text-zinc-500 shrink-0 sm:rotate-0 rotate-90 my-1 sm:my-0">
+                              <span className="font-bold tracking-wider text-amber-500/80 uppercase">Supply</span>
+                              <div className="flex items-center text-zinc-600 text-[10px]">
+                                <span>──➔</span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        
+                        {/* Node 2: Regional Store */}
+                        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
+                          <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">
+                            {order.pipelineType === '3-node' ? 'Transfer Hub' : 'Departure Store'}
+                          </span>
+                          <span className="text-zinc-200 text-xs truncate block">
+                            {stores.find(s => s.id.toString() === order.regionalStoreId)?.name || 'Select Store'}
+                          </span>
+                        </div>
+ 
+                        {/* Delivery transit arrow */}
+                        <div className="flex flex-col items-center text-[9px] text-zinc-500 shrink-0 sm:rotate-0 rotate-90 my-1 sm:my-0">
+                          <span className="font-bold tracking-wider text-emerald-500/80 uppercase">Transit</span>
+                          <div className="flex items-center text-zinc-600 text-[10px]">
+                            <span>──➔</span>
+                          </div>
+                        </div>
+ 
+                        {/* Node 3: Customer destination */}
+                        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
+                          <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">Destination</span>
+                          <span className="text-zinc-200 text-xs truncate block">
+                            {order.customerSearchQuery || 'Customer'}
+                          </span>
+                          {(order.customerCity || order.customerState) && (
+                            <span className="text-[9px] text-zinc-500 block truncate">
+                              {order.customerCity ? `${order.customerCity}, ` : ''}{order.customerState}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Invoices & Deliveries List */}
+                  <div className="space-y-3 pt-4 border-t border-zinc-800">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
                           <FileText size={13} /> Invoice & Delivery Reference(s) <span className="text-red-500">*</span>
                         </label>
                         <button
@@ -1213,124 +1330,6 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                             </div>
                           </div>
                         ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Step 1.5: Fulfillment Route Pipeline */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-800">
-                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                      <Truck size={14} /> Fulfillment Route Pipeline
-                    </h4>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Regional Store Selector */}
-                      <div>
-                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                          Regional Store <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          required
-                          value={order.regionalStoreId || ''}
-                          onChange={(e) => {
-                            handleRoutingChange(order.id, { regionalStoreId: e.target.value })
-                          }}
-                          className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-650 transition-colors text-sm"
-                        >
-                          <option value="">-- Select Store --</option>
-                          {stores.map(s => (
-                            <option key={s.id} value={s.id}>
-                              {s.name} {s.is_central ? '(Central HQ)' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Pipeline Type selector */}
-                      <div>
-                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                          Routing Model
-                        </label>
-                        <div className="grid grid-cols-2 gap-2 bg-zinc-950/60 p-1 border border-zinc-800 rounded-xl">
-                          <button
-                            type="button"
-                            onClick={() => handleRoutingChange(order.id, { pipelineType: '2-node' })}
-                            className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
-                              order.pipelineType === '2-node'
-                                ? 'bg-zinc-800 text-emerald-400 shadow-md border border-zinc-700/50'
-                                : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
-                          >
-                            2-Node Direct
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRoutingChange(order.id, { pipelineType: '3-node' })}
-                            className={`py-2 text-[10px] font-bold uppercase rounded-lg transition-all ${
-                              order.pipelineType === '3-node'
-                                ? 'bg-zinc-800 text-emerald-400 shadow-md border border-zinc-700/50'
-                                : 'text-zinc-500 hover:text-zinc-300'
-                            }`}
-                          >
-                            3-Node Supply
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Visual Routing Pipeline diagram */}
-                    <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 mt-3 flex flex-col items-center justify-center space-y-3 min-h-[90px] overflow-hidden">
-                      <span className="text-[9px] uppercase tracking-widest text-zinc-550 font-bold">Route Path Preview</span>
-                      
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm font-semibold w-full">
-                        {order.pipelineType === '3-node' && (
-                          <>
-                            {/* Node 1: Lagos Central Store */}
-                            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
-                              <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">Supply Source</span>
-                              <span className="text-zinc-200 text-xs truncate block">Lagos Store (HQ)</span>
-                            </div>
-                            
-                            {/* Supply arrow */}
-                            <div className="flex flex-col items-center text-[9px] text-zinc-500 shrink-0 sm:rotate-0 rotate-90 my-1 sm:my-0">
-                              <span className="font-bold tracking-wider text-amber-500/80 uppercase">Supply</span>
-                              <div className="flex items-center text-zinc-600 text-[10px]">
-                                <span>──➔</span>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                        
-                        {/* Node 2: Regional Store */}
-                        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
-                          <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">
-                            {order.pipelineType === '3-node' ? 'Transfer Hub' : 'Departure Store'}
-                          </span>
-                          <span className="text-zinc-200 text-xs truncate block">
-                            {stores.find(s => s.id.toString() === order.regionalStoreId)?.name || 'Select Store'}
-                          </span>
-                        </div>
- 
-                        {/* Delivery transit arrow */}
-                        <div className="flex flex-col items-center text-[9px] text-zinc-500 shrink-0 sm:rotate-0 rotate-90 my-1 sm:my-0">
-                          <span className="font-bold tracking-wider text-emerald-500/80 uppercase">Transit</span>
-                          <div className="flex items-center text-zinc-600 text-[10px]">
-                            <span>──➔</span>
-                          </div>
-                        </div>
- 
-                        {/* Node 3: Customer destination */}
-                        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-center shadow-md flex-1 min-w-0 w-full">
-                          <span className="text-[8px] uppercase tracking-wider text-zinc-550 font-bold block mb-0.5">Destination</span>
-                          <span className="text-zinc-200 text-xs truncate block">
-                            {order.customerSearchQuery || 'Customer'}
-                          </span>
-                          {(order.customerCity || order.customerState) && (
-                            <span className="text-[9px] text-zinc-500 block truncate">
-                              {order.customerCity ? `${order.customerCity}, ` : ''}{order.customerState}
-                            </span>
-                          )}
-                        </div>
                       </div>
                     </div>
                   </div>

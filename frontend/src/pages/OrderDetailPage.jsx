@@ -773,6 +773,23 @@ export default function OrderDetailPage() {
     }
   }
 
+  const handleDeleteOrder = async () => {
+    if (!window.confirm("Are you sure you want to delete this order? This action cannot be undone and will restore stock inventory levels.")) {
+      return
+    }
+    setLoading(true)
+    try {
+      setError(null)
+      await api.delete(`/orders/${id}`)
+      alert("Order deleted successfully.")
+      navigate("/orders")
+    } catch (err) {
+      console.error("Failed to delete order:", err)
+      setError(err.response?.data?.detail || "Failed to delete order. Please try again.")
+      setLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center text-zinc-400">
@@ -821,19 +838,34 @@ export default function OrderDetailPage() {
         </div>
         <div className="flex flex-col md:items-end gap-2">
           {!isEditing && !previewCommit && (
-            <button
-              onClick={() => {
-                if (hasWriteAccess) {
-                  handleStartEdit()
-                } else {
-                  setShowAccessGateway(true)
-                }
-              }}
-              className="px-4 py-2 border border-zinc-750 hover:border-white bg-transparent hover:bg-white text-zinc-300 hover:text-zinc-900 font-semibold rounded-xl transition-all duration-200 text-sm flex items-center gap-2"
-            >
-              <Edit3 size={14} />
-              Edit Manifest & Ledger
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => {
+                  if (hasWriteAccess) {
+                    handleStartEdit()
+                  } else {
+                    setShowAccessGateway(true)
+                  }
+                }}
+                className="px-4 py-2 border border-zinc-750 hover:border-white bg-transparent hover:bg-white text-zinc-300 hover:text-zinc-900 font-semibold rounded-xl transition-all duration-200 text-sm flex items-center gap-2"
+              >
+                <Edit3 size={14} />
+                Edit Manifest & Ledger
+              </button>
+              <button
+                onClick={() => {
+                  if (hasWriteAccess) {
+                    handleDeleteOrder()
+                  } else {
+                    setShowAccessGateway(true)
+                  }
+                }}
+                className="px-4 py-2 border border-red-900/50 hover:border-red-500 bg-red-950/20 hover:bg-red-500 text-red-400 hover:text-white font-semibold rounded-xl transition-all duration-200 text-sm flex items-center gap-2"
+              >
+                <Trash2 size={14} />
+                Delete Order
+              </button>
+            </div>
           )}
           <div className="text-xs text-zinc-500 font-mono">
             Created: {formatDate(order.created_at)}

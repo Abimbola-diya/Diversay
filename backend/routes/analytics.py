@@ -87,7 +87,7 @@ def get_dashboard_metrics(
     
     state_counts = {}
     for order in all_orders:
-        state = order.customer.state or "Unknown"
+        state = (order.customer.state or "Unknown").strip().upper()
         state_counts[state] = state_counts.get(state, 0) + 1
     
     top_5_states = [
