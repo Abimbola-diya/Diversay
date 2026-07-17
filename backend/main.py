@@ -242,6 +242,31 @@ try:
             logger.info("Successfully swapped SA/DLN prefixes in orders table.")
         except Exception as e:
             logger.warning(f"Could not swap SA/DLN prefixes in database: {e}")
+        
+        # Create order_reference_cards table if it doesn't exist
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS order_reference_cards (
+                    id SERIAL PRIMARY KEY,
+                    order_id INTEGER NOT NULL REFERENCES orders(id),
+                    invoice_number VARCHAR,
+                    waybill_number VARCHAR,
+                    brand VARCHAR DEFAULT 'DSL'
+                );
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_order_reference_cards_order_id ON order_reference_cards (order_id);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_order_reference_cards_id ON order_reference_cards (id);"))
+            logger.info("Ensured order_reference_cards table exists.")
+        except Exception as e:
+            logger.warning(f"Could not create order_reference_cards table: {e}")
+        
+        # Add reference_card_id column to order_line_items if it doesn't exist
+        try:
+            conn.execute(text("ALTER TABLE order_line_items ADD COLUMN IF NOT EXISTS reference_card_id INTEGER REFERENCES order_reference_cards(id);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_order_line_items_reference_card_id ON order_line_items (reference_card_id);"))
+            logger.info("Ensured reference_card_id column exists on order_line_items.")
+        except Exception as e:
+            logger.warning(f"Could not add reference_card_id column: {e}")
             
         conn.commit()
     seed_admin_user()

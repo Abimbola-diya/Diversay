@@ -127,11 +127,34 @@ class OrderLineItemResponse(BaseModel):
     id: int
     product_id: int
     product_name: Optional[str] = None
+    product_brand: Optional[str] = None
     quantity: float
     unit: UnitType
     unit_price: float
     total_price: Optional[float] = None
     created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# ============ Reference Card Schemas ============
+class ReferenceCardLineItemCreate(BaseModel):
+    product_id: int
+    quantity: float
+    unit: UnitType
+
+class ReferenceCardCreate(BaseModel):
+    invoice_number: str
+    waybill_number: str
+    brand: str = "DSL"
+    line_items: List[ReferenceCardLineItemCreate]
+
+class ReferenceCardResponse(BaseModel):
+    id: int
+    invoice_number: Optional[str] = None
+    waybill_number: Optional[str] = None
+    brand: str = "DSL"
+    line_items: List[OrderLineItemResponse] = []
     
     class Config:
         from_attributes = True
@@ -151,7 +174,8 @@ class OrderCreate(BaseModel):
     fuel_cost: Optional[float] = 0.0
     waybill_cost: Optional[float] = 0.0
     other_costs: Optional[List[dict]] = []
-    line_items: List[OrderLineItemCreate]
+    line_items: Optional[List[OrderLineItemCreate]] = None
+    reference_cards: Optional[List[ReferenceCardCreate]] = None
     commit_message: Optional[str] = None
 
 class OrderUpdate(BaseModel):
@@ -170,6 +194,7 @@ class OrderUpdate(BaseModel):
     waybill_cost: Optional[float] = None
     other_costs: Optional[List[dict]] = None
     line_items: Optional[List[OrderLineItemCreate]] = None
+    reference_cards: Optional[List[ReferenceCardCreate]] = None
     commit_message: Optional[str] = None
 
 class OrderStatusUpdate(BaseModel):
@@ -209,6 +234,7 @@ class OrderResponse(BaseModel):
     updated_at: datetime
     total_amount: float = 0.0
     line_items: List[OrderLineItemResponse] = []
+    reference_cards: List[ReferenceCardResponse] = []
     
     class Config:
         from_attributes = True

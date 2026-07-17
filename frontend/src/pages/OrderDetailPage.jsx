@@ -193,11 +193,13 @@ export default function OrderDetailPage() {
   const [editActualDelivery, setEditActualDelivery] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editLineItems, setEditLineItems] = useState([])
+  const [editReferenceCards, setEditReferenceCards] = useState([])
   const [editFuelCost, setEditFuelCost] = useState('0')
   const [editWaybillCost, setEditWaybillCost] = useState('0')
   const [editOtherCosts, setEditOtherCosts] = useState([])
   const [commitMessage, setCommitMessage] = useState('')
   const [activeProductSearchIndex, setActiveProductSearchIndex] = useState(null)
+  const [activeCardProductSearch, setActiveCardProductSearch] = useState(null)
 
   const getPreviousSnapshot = (currentIdx) => {
     for (let i = currentIdx + 1; i < auditLogs.length; i++) {
@@ -343,6 +345,7 @@ export default function OrderDetailPage() {
     const handleOutsideClick = (e) => {
       if (!e.target.closest('.product-search-container')) {
         setActiveProductSearchIndex(null)
+        setActiveCardProductSearch(null)
       }
     }
     document.addEventListener('mousedown', handleOutsideClick)
@@ -486,12 +489,31 @@ export default function OrderDetailPage() {
     setEditFuelCost(order.fuel_cost !== undefined ? order.fuel_cost.toString() : '0')
     setEditWaybillCost(order.waybill_cost !== undefined ? order.waybill_cost.toString() : '0')
     setEditOtherCosts(order.other_costs ? order.other_costs.map(c => ({ id: Math.random().toString(36).substr(2, 9), ...c })) : [])
-    setEditLineItems(order.line_items.map(item => ({
-      product_id: item.product_id.toString(),
-      searchQuery: item.product_name || '',
-      quantity: item.quantity,
-      unit: item.unit
-    })))
+    
+    if (order.reference_cards && order.reference_cards.length > 0) {
+      setEditReferenceCards(order.reference_cards.map(card => ({
+        id: card.id || Math.random().toString(36).substr(2, 9),
+        invoice_number: card.invoice_number || '',
+        waybill_number: card.waybill_number || '',
+        brand: card.brand || 'DSL',
+        line_items: card.line_items.map(item => ({
+          product_id: item.product_id.toString(),
+          searchQuery: item.product_name || '',
+          quantity: item.quantity,
+          unit: item.unit
+        }))
+      })))
+      setEditLineItems([])
+    } else {
+      setEditLineItems(order.line_items.map(item => ({
+        product_id: item.product_id.toString(),
+        searchQuery: item.product_name || '',
+        quantity: item.quantity,
+        unit: item.unit
+      })))
+      setEditReferenceCards([])
+    }
+    
     setCommitMessage('')
     setIsEditing(true)
     fetchProducts()
@@ -510,6 +532,86 @@ export default function OrderDetailPage() {
     setEditLineItems(editLineItems.filter((_, i) => i !== idx))
   }
 
+  // Reference Card Edit Helpers
+  const handleReferenceCardChange = (cardId, field, value) => {
+    setEditReferenceCards(prev => prev.map(card => {
+      if (card.id === cardId) {
+        return { ...card, [field]: value }
+      }
+      return card
+    }))
+  }
+
+  const handleAddReferenceCard = () => {
+    setEditReferenceCards(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(36).substr(2, 9),
+        invoice_number: '',
+        waybill_number: '',
+        brand: 'DSL',
+        line_items: [{ product_id: '', searchQuery: '', quantity: 1, unit: 'Carton' }]
+      }
+    ])
+  }
+
+  const handleRemoveReferenceCard = (cardId) => {
+    if (editReferenceCards.length === 1) return
+    setEditReferenceCards(prev => prev.filter(card => card.id !== cardId))
+  }
+
+  const handleCardLineItemChange = (cardId, itemIdx, field, value) => {
+    setEditReferenceCards(prev => prev.map(card => {
+      if (card.id === cardId) {
+        const updatedItems = [...card.line_items]
+        updatedItems[itemIdx] = { ...updatedItems[itemIdx], [field]: value }
+        
+        // Auto-select product id if exact match
+        if (field === 'searchQuery') {
+          const exactProd = products.find(p => p.name.toLowerCase() === value.trim().toLowerCase())
+          if (exactProd) {
+            updatedItems[itemIdx].product_id = exactProd.id.toString()
+          } else {
+            updatedItems[itemIdx].product_id = ''
+          }
+        }
+        
+        return { ...card, line_items: updatedItems }
+      }
+      return card
+    }))
+  }
+
+  const handleCardAddLineItem = (cardId) => {
+    setEditReferenceCards(prev => prev.map(card => {
+      if (card.id === cardId) {
+        return {
+          ...card,
+          line_items: [...card.line_items, { product_id: '', searchQuery: '', quantity: 1, unit: 'Carton' }]
+        }
+      }
+      return card
+    }))
+  }
+
+  const handleCardRemoveLineItem = (cardId, itemIdx) => {
+    setEditReferenceCards(prev => prev.map(card => {
+      if (card.id === cardId) {
+        if (card.line_items.length === 1) return card
+        return {
+          ...card,
+          line_items: card.line_items.filter((_, i) => i !== itemIdx)
+        }
+      }
+      return card
+    }))
+  }
+
+  const getFilteredProductsForCard = (brand) => {
+    if (!brand) return products
+    return products.filter(p => (p.brand || '').toLowerCase() === brand.toLowerCase())
+  }
+
   const getProductRate = (productId) => {
     if (!productId) return 0.0
     const prod = products.find(p => p.id === parseInt(productId))
@@ -522,18 +624,54 @@ export default function OrderDetailPage() {
       return
     }
 
-    const invalidItem = editLineItems.find(item => !item.product_id || item.quantity <= 0)
-    if (invalidItem) {
-      alert("Please select a valid product and quantity for all ledger items.")
-      return
+    const hasRefCards = order.reference_cards && order.reference_cards.length > 0
+
+    if (hasRefCards) {
+      // Validate reference cards fields are filled
+      const invalidCard = editReferenceCards.find(card => !card.invoice_number || !card.waybill_number || !card.brand)
+      if (invalidCard) {
+        alert("Please fill in Invoice No, Delivery No, and Brand for all reference cards.")
+        return
+      }
+
+      // Check for duplicate invoice/delivery numbers within the form
+      const invoices = editReferenceCards.map(c => c.invoice_number.trim().toLowerCase())
+      const waybills = editReferenceCards.map(c => c.waybill_number.trim().toLowerCase())
+      if (new Set(invoices).size !== invoices.length) {
+        alert("Duplicate Invoice Numbers detected in reference cards.")
+        return
+      }
+      if (new Set(waybills).size !== waybills.length) {
+        alert("Duplicate Delivery Numbers detected in reference cards.")
+        return
+      }
+
+      // Check for invalid line items inside cards
+      let itemError = false
+      editReferenceCards.forEach(card => {
+        const invalidItem = card.line_items.find(item => !item.product_id || parseFloat(item.quantity) <= 0)
+        if (invalidItem) {
+          itemError = true
+        }
+      })
+      if (itemError) {
+        alert("Please select a valid product and quantity for all ledger items in every reference card.")
+        return
+      }
+    } else {
+      const invalidItem = editLineItems.find(item => !item.product_id || parseFloat(item.quantity) <= 0)
+      if (invalidItem) {
+        alert("Please select a valid product and quantity for all ledger items.")
+        return
+      }
     }
 
     try {
       setLoading(true)
       const payload = {
         customer_id: order.customer_id,
-        waybill_number: editWaybill || null,
-        invoice_number: editInvoice || null,
+        waybill_number: hasRefCards ? null : (editWaybill || null),
+        invoice_number: hasRefCards ? null : (editInvoice || null),
         dispatch_time: new Date(editDispatchTime).toISOString(),
         expected_delivery_time: new Date(editExpectedDelivery).toISOString(),
         actual_delivery_time: editActualDelivery ? new Date(editActualDelivery).toISOString() : null,
@@ -543,12 +681,26 @@ export default function OrderDetailPage() {
         fuel_cost: parseFloat(editFuelCost || 0),
         waybill_cost: parseFloat(editWaybillCost || 0),
         other_costs: editOtherCosts.map(c => ({ name: c.name, amount: parseFloat(c.amount || 0) })),
-        line_items: editLineItems.map(item => ({
+        commit_message: commitMessage.trim() || "Updated manifest details"
+      }
+
+      if (hasRefCards) {
+        payload.reference_cards = editReferenceCards.map(card => ({
+          invoice_number: card.invoice_number.trim(),
+          waybill_number: card.waybill_number.trim(),
+          brand: card.brand,
+          line_items: card.line_items.map(item => ({
+            product_id: parseInt(item.product_id),
+            quantity: parseFloat(item.quantity),
+            unit: item.unit
+          }))
+        }))
+      } else {
+        payload.line_items = editLineItems.map(item => ({
           product_id: parseInt(item.product_id),
           quantity: parseFloat(item.quantity),
           unit: item.unit
-        })),
-        commit_message: commitMessage.trim() || "Updated manifest details"
+        }))
       }
 
       await api.put(`/orders/${id}`, payload)
@@ -580,20 +732,34 @@ export default function OrderDetailPage() {
       setLoading(true)
       const payload = {
         customer_id: snapshot.customer_id,
-        waybill_number: snapshot.waybill_number || null,
-        invoice_number: snapshot.invoice_number || null,
+        waybill_number: snapshot.reference_cards && snapshot.reference_cards.length > 0 ? null : (snapshot.waybill_number || null),
+        invoice_number: snapshot.reference_cards && snapshot.reference_cards.length > 0 ? null : (snapshot.invoice_number || null),
         dispatch_time: snapshot.dispatch_time,
         expected_delivery_time: snapshot.expected_delivery_time,
         actual_delivery_time: snapshot.actual_delivery_time || null,
         driver_name: snapshot.driver_name || null,
         vehicle_number: snapshot.vehicle_number || null,
         notes: snapshot.notes || null,
-        line_items: snapshot.line_items.map(item => ({
+        commit_message: `Reverted to commit [${shortHash}]`
+      }
+
+      if (snapshot.reference_cards && snapshot.reference_cards.length > 0) {
+        payload.reference_cards = snapshot.reference_cards.map(card => ({
+          invoice_number: card.invoice_number,
+          waybill_number: card.waybill_number,
+          brand: card.brand,
+          line_items: card.line_items.map(item => ({
+            product_id: parseInt(item.product_id),
+            quantity: parseFloat(item.quantity),
+            unit: item.unit
+          }))
+        }))
+      } else {
+        payload.line_items = snapshot.line_items.map(item => ({
           product_id: parseInt(item.product_id),
           quantity: parseFloat(item.quantity),
           unit: item.unit
-        })),
-        commit_message: `Reverted to commit [${shortHash}]`
+        }))
       }
 
       await api.put(`/orders/${id}`, payload)
@@ -861,24 +1027,33 @@ export default function OrderDetailPage() {
 
             {isEditing ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-455 mb-1">Invoice No</label>
-                  <input
-                    type="text"
-                    value={editInvoice}
-                    onChange={(e) => setEditInvoice(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-450 mb-1">Delivery No</label>
-                  <input
-                    type="text"
-                    value={editWaybill}
-                    onChange={(e) => setEditWaybill(e.target.value)}
-                    className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
-                  />
-                </div>
+                {order.reference_cards && order.reference_cards.length > 0 ? (
+                  <div className="md:col-span-2 bg-zinc-950/20 border border-zinc-800/80 rounded-xl p-3.5 text-xs text-zinc-400">
+                    <span className="font-bold text-zinc-350 block mb-1">Multi-Invoice Order Mode</span>
+                    Invoice, delivery, and brand info are managed on reference cards in the ledger section below.
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-455 mb-1">Invoice No</label>
+                      <input
+                        type="text"
+                        value={editInvoice}
+                        onChange={(e) => setEditInvoice(e.target.value)}
+                        className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-450 mb-1">Delivery No</label>
+                      <input
+                        type="text"
+                        value={editWaybill}
+                        onChange={(e) => setEditWaybill(e.target.value)}
+                        className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                      />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-zinc-450 mb-1">Driver Name</label>
                   <input
@@ -936,20 +1111,54 @@ export default function OrderDetailPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                <div>
-                  <span className="text-xs text-zinc-300 font-medium block">Invoice No</span>
-                  <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('invoice_number', displayOrder.invoice_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
-                    {displayOrder.invoice_number || "N/A"}
-                  </span>
-                  {getFieldDiffMarker('invoice_number', displayOrder.invoice_number)}
-                </div>
-                <div>
-                  <span className="text-xs text-zinc-300 font-medium block">Delivery No</span>
-                  <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('waybill_number', displayOrder.waybill_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
-                    {displayOrder.waybill_number || "N/A"}
-                  </span>
-                  {getFieldDiffMarker('waybill_number', displayOrder.waybill_number)}
-                </div>
+                {displayOrder.reference_cards && displayOrder.reference_cards.length > 0 ? (
+                  <div className="col-span-2 md:col-span-3">
+                    <span className="text-xs text-zinc-400 font-bold uppercase tracking-wider block mb-2">Order Reference Cards</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {displayOrder.reference_cards.map((card, cardIdx) => (
+                        <div key={card.id || cardIdx} className="bg-zinc-950/40 border border-zinc-800/80 rounded-xl p-3 flex flex-col justify-between">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Ref Card #{cardIdx + 1}</span>
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                              card.brand?.toUpperCase() === 'DSLP'
+                                ? 'bg-purple-500/25 text-purple-400 border border-purple-500/35'
+                                : 'bg-sky-500/25 text-sky-400 border border-sky-500/35'
+                            }`}>
+                              {card.brand}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-[10px] text-zinc-550 block">Invoice No</span>
+                              <span className="font-mono text-zinc-200 font-semibold">{card.invoice_number}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-zinc-550 block">Delivery No</span>
+                              <span className="font-mono text-zinc-200 font-semibold">{card.waybill_number}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <span className="text-xs text-zinc-300 font-medium block">Invoice No</span>
+                      <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('invoice_number', displayOrder.invoice_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                        {displayOrder.invoice_number || "N/A"}
+                      </span>
+                      {getFieldDiffMarker('invoice_number', displayOrder.invoice_number)}
+                    </div>
+                    <div>
+                      <span className="text-xs text-zinc-300 font-medium block">Delivery No</span>
+                      <span className={`text-sm font-mono block mt-1 ${isFieldDifferent('waybill_number', displayOrder.waybill_number) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
+                        {displayOrder.waybill_number || "N/A"}
+                      </span>
+                      {getFieldDiffMarker('waybill_number', displayOrder.waybill_number)}
+                    </div>
+                  </>
+                )}
                 <div>
                   <span className="text-xs text-zinc-300 font-medium block">Driver Name</span>
                   <span className={`text-sm block mt-1 ${isFieldDifferent('driver_name', displayOrder.driver_name) ? 'text-yellow-500 font-bold' : 'text-white font-semibold'}`}>
@@ -1016,7 +1225,7 @@ export default function OrderDetailPage() {
                 <DollarSign size={16} className="text-zinc-500" />
                 Consignment Ledger
               </h3>
-              {isEditing && (
+              {isEditing && !order.reference_cards?.length && (
                 <button
                   type="button"
                   onClick={handleAddLineItem}
@@ -1028,187 +1237,495 @@ export default function OrderDetailPage() {
             </div>
 
             {isEditing ? (
-              <div className="space-y-3">
-                {editLineItems.map((item, idx) => (
-                  <div key={idx} className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/30 p-3 rounded-xl border border-zinc-800">
-                    <div className="flex-1 w-full relative product-search-container">
-                      <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Product</label>
-                      <input
-                        type="text"
-                        placeholder="Type product name..."
-                        required
-                        value={item.searchQuery || ''}
-                        onFocus={() => {
-                          setActiveProductSearchIndex(idx)
-                        }}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          const updated = [...editLineItems]
-                          updated[idx].searchQuery = val
+              order.reference_cards && order.reference_cards.length > 0 ? (
+                <div className="space-y-6">
+                  {editReferenceCards.map((card, cardIdx) => (
+                    <div key={card.id || cardIdx} className="bg-zinc-950/20 border border-zinc-800/80 rounded-xl p-4 space-y-4">
+                      <div className="flex justify-between items-center pb-2 border-b border-zinc-800/60">
+                        <span className="text-xs font-bold text-zinc-300">Reference Card #{cardIdx + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveReferenceCard(card.id)}
+                          disabled={editReferenceCards.length === 1}
+                          className="flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300 disabled:opacity-30 disabled:cursor-not-allowed text-xs transition-colors"
+                        >
+                          <Trash2 size={12} /> Remove Card
+                        </button>
+                      </div>
 
-                          const exactProd = products.find(p => p.name.toLowerCase() === val.trim().toLowerCase())
-                          if (exactProd) {
-                            updated[idx].product_id = exactProd.id.toString()
-                          } else {
-                            updated[idx].product_id = ''
-                          }
-                          setEditLineItems(updated)
-                        }}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
-                      />
-                      
-                      {activeProductSearchIndex === idx && (
-                        <ProductSearchDropdown
-                          query={item.searchQuery || ''}
-                          products={products}
-                          onSelect={(product) => {
-                            const updated = [...editLineItems]
-                            updated[idx].product_id = product.id.toString()
-                            updated[idx].searchQuery = product.name
-                            setEditLineItems(updated)
-                            setActiveProductSearchIndex(null)
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    <div className="w-full md:w-28">
-                      <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Quantity</label>
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        step="any"
-                        placeholder="Qty"
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const updated = [...editLineItems]
-                          updated[idx].quantity = e.target.value
-                          setEditLineItems(updated)
-                        }}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
-                      />
-                    </div>
-
-                    <div className="w-full md:w-32">
-                      <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Unit</label>
-                      <select
-                        value={item.unit}
-                        onChange={(e) => {
-                          const updated = [...editLineItems]
-                          updated[idx].unit = e.target.value
-                          setEditLineItems(updated)
-                        }}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
-                      >
-                        <option value="Pieces">Pieces (Pcs)</option>
-                        <option value="Carton">Carton</option>
-                      </select>
-                    </div>
-
-                    <div className="text-right px-2 py-2 text-xs text-zinc-500 font-mono hidden md:block">
-                      Rate: {formatCurrency(getProductRate(item.product_id))}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveLineItem(idx)}
-                      disabled={editLineItems.length === 1}
-                      className="p-2 hover:bg-red-500/10 hover:text-red-400 text-zinc-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
-                      title="Remove Item"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-
-                {/* Logistics Cost Edit Section */}
-                <div className="mt-6 pt-6 border-t border-zinc-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                      <span className="text-zinc-550 font-bold">$</span> Logistics Costs Edit
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditOtherCosts([
-                          ...editOtherCosts,
-                          { id: Math.random().toString(36).substr(2, 9), name: '', amount: '0' }
-                        ])
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 hover:text-white text-xs font-semibold rounded-lg border border-zinc-700 transition-colors"
-                    >
-                      <Plus size={12} /> Add Cost
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Fuel Cost (₦)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={editFuelCost}
-                        onChange={(e) => setEditFuelCost(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Waybill Cost (₦)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={editWaybillCost}
-                        onChange={(e) => setEditWaybillCost(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {editOtherCosts.length > 0 && (
-                    <div className="space-y-2 pt-2">
-                      {editOtherCosts.map((cost, costIdx) => (
-                        <div key={cost.id} className="flex gap-2 items-center bg-zinc-950/20 p-2.5 rounded-xl border border-zinc-800">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Invoice No</label>
                           <input
                             type="text"
-                            placeholder="Cost Name (e.g. Loading Fee)"
+                            placeholder="e.g. DSL/SA/..."
                             required
-                            value={cost.name}
-                            onChange={(e) => {
-                              const updated = [...editOtherCosts]
-                              updated[costIdx].name = e.target.value
-                              setEditOtherCosts(updated)
-                            }}
-                            className="flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                            value={card.invoice_number}
+                            onChange={(e) => handleReferenceCardChange(card.id, 'invoice_number', e.target.value)}
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                           />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Delivery No</label>
                           <input
-                            type="number"
-                            placeholder="Amount"
-                            min="0"
-                            step="any"
+                            type="text"
+                            placeholder="e.g. DSL/DLN/..."
                             required
-                            value={cost.amount}
-                            onChange={(e) => {
-                              const updated = [...editOtherCosts]
-                              updated[costIdx].amount = e.target.value
-                              setEditOtherCosts(updated)
-                            }}
-                            className="w-28 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                            value={card.waybill_number}
+                            onChange={(e) => handleReferenceCardChange(card.id, 'waybill_number', e.target.value)}
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                           />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Brand Mapping</label>
+                          <select
+                            value={card.brand}
+                            onChange={(e) => handleReferenceCardChange(card.id, 'brand', e.target.value)}
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                          >
+                            <option value="DSL">DSL</option>
+                            <option value="DSLP">DSLP</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Products list for this card */}
+                      <div className="space-y-3.5 pt-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-zinc-550 uppercase tracking-wider">Line Items</span>
                           <button
                             type="button"
-                            onClick={() => setEditOtherCosts(editOtherCosts.filter(c => c.id !== cost.id))}
-                            className="p-1.5 hover:bg-red-500/10 hover:text-red-400 text-zinc-555 rounded transition-colors flex-shrink-0"
+                            onClick={() => handleCardAddLineItem(card.id)}
+                            className="flex items-center gap-1 px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-[10px] font-bold rounded border border-zinc-800 transition-colors"
                           >
-                            <Trash2 size={14} />
+                            <Plus size={10} /> Add Product
                           </button>
                         </div>
-                      ))}
+
+                        {card.line_items.map((item, itemIdx) => (
+                          <div key={itemIdx} className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800">
+                            <div className="flex-1 w-full relative product-search-container">
+                              <input
+                                type="text"
+                                placeholder="Type product name..."
+                                required
+                                value={item.searchQuery || ''}
+                                onFocus={() => {
+                                  setActiveCardProductSearch({ cardId: card.id, itemIdx })
+                                }}
+                                onChange={(e) => handleCardLineItemChange(card.id, itemIdx, 'searchQuery', e.target.value)}
+                                className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                              />
+
+                              {activeCardProductSearch &&
+                                activeCardProductSearch.cardId === card.id &&
+                                activeCardProductSearch.itemIdx === itemIdx && (
+                                  <ProductSearchDropdown
+                                    query={item.searchQuery || ''}
+                                    products={getFilteredProductsForCard(card.brand)}
+                                    onSelect={(product) => {
+                                      handleCardLineItemChange(card.id, itemIdx, 'product_id', product.id.toString())
+                                      handleCardLineItemChange(card.id, itemIdx, 'searchQuery', product.name)
+                                      setActiveCardProductSearch(null)
+                                    }}
+                                  />
+                                )}
+                            </div>
+
+                            <div className="w-full md:w-24">
+                              <input
+                                type="number"
+                                required
+                                min="1"
+                                step="any"
+                                placeholder="Qty"
+                                value={item.quantity}
+                                onChange={(e) => handleCardLineItemChange(card.id, itemIdx, 'quantity', e.target.value)}
+                                className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-705 transition-colors text-sm"
+                              />
+                            </div>
+
+                            <div className="w-full md:w-28">
+                              <select
+                                value={item.unit}
+                                onChange={(e) => handleCardLineItemChange(card.id, itemIdx, 'unit', e.target.value)}
+                                className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-705 transition-colors text-sm"
+                              >
+                                <option value="Pieces">Pieces (Pcs)</option>
+                                <option value="Carton">Carton</option>
+                              </select>
+                            </div>
+
+                            <div className="text-right px-2 text-xs text-zinc-500 font-mono hidden md:block">
+                              Rate: {formatCurrency(getProductRate(item.product_id))}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleCardRemoveLineItem(card.id, itemIdx)}
+                              disabled={card.line_items.length === 1}
+                              className="p-1.5 hover:bg-red-500/10 hover:text-red-400 text-zinc-500 disabled:opacity-30 disabled:cursor-not-allowed rounded transition-colors flex-shrink-0"
+                              title="Remove Item"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  )}
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleAddReferenceCard}
+                    className="w-full py-2 bg-zinc-900 hover:bg-zinc-850 text-zinc-450 hover:text-zinc-200 text-xs font-bold rounded-xl border border-dashed border-zinc-800 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Plus size={14} /> Add Another Reference Card
+                  </button>
+
+                  {/* Logistics Cost Edit Section */}
+                  <div className="mt-6 pt-6 border-t border-zinc-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                        <span className="text-zinc-550 font-bold">$</span> Logistics Costs Edit
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditOtherCosts([
+                            ...editOtherCosts,
+                            { id: Math.random().toString(36).substr(2, 9), name: '', amount: '0' }
+                          ])
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 hover:text-white text-xs font-semibold rounded-lg border border-zinc-700 transition-colors"
+                      >
+                        <Plus size={12} /> Add Cost
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Fuel Cost (₦)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editFuelCost}
+                          onChange={(e) => setEditFuelCost(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Waybill Cost (₦)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editWaybillCost}
+                          onChange={(e) => setEditWaybillCost(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {editOtherCosts.length > 0 && (
+                      <div className="space-y-2 pt-2">
+                        {editOtherCosts.map((cost, costIdx) => (
+                          <div key={cost.id} className="flex gap-2 items-center bg-zinc-950/20 p-2.5 rounded-xl border border-zinc-800">
+                            <input
+                              type="text"
+                              placeholder="Cost Name (e.g. Loading Fee)"
+                              required
+                              value={cost.name}
+                              onChange={(e) => {
+                                const updated = [...editOtherCosts]
+                                updated[costIdx].name = e.target.value
+                                setEditOtherCosts(updated)
+                              }}
+                              className="flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                            />
+                            <input
+                              type="number"
+                              placeholder="Amount"
+                              min="0"
+                              step="any"
+                              required
+                              value={cost.amount}
+                              onChange={(e) => {
+                                const updated = [...editOtherCosts]
+                                updated[costIdx].amount = e.target.value
+                                setEditOtherCosts(updated)
+                              }}
+                              className="w-28 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setEditOtherCosts(editOtherCosts.filter(c => c.id !== cost.id))}
+                              className="p-1.5 hover:bg-red-500/10 hover:text-red-400 text-zinc-555 rounded transition-colors flex-shrink-0"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  {editLineItems.map((item, idx) => (
+                    <div key={idx} className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/30 p-3 rounded-xl border border-zinc-800">
+                      <div className="flex-1 w-full relative product-search-container">
+                        <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Product</label>
+                        <input
+                          type="text"
+                          placeholder="Type product name..."
+                          required
+                          value={item.searchQuery || ''}
+                          onFocus={() => {
+                            setActiveProductSearchIndex(idx)
+                          }}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            const updated = [...editLineItems]
+                            updated[idx].searchQuery = val
+
+                            const exactProd = products.find(p => p.name.toLowerCase() === val.trim().toLowerCase())
+                            if (exactProd) {
+                              updated[idx].product_id = exactProd.id.toString()
+                            } else {
+                              updated[idx].product_id = ''
+                            }
+                            setEditLineItems(updated)
+                          }}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                        />
+                        
+                        {activeProductSearchIndex === idx && (
+                          <ProductSearchDropdown
+                            query={item.searchQuery || ''}
+                            products={products}
+                            onSelect={(product) => {
+                              const updated = [...editLineItems]
+                              updated[idx].product_id = product.id.toString()
+                              updated[idx].searchQuery = product.name
+                              setEditLineItems(updated)
+                              setActiveProductSearchIndex(null)
+                            }}
+                          />
+                        )}
+                      </div>
+
+                      <div className="w-full md:w-28">
+                        <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Quantity</label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          step="any"
+                          placeholder="Qty"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const updated = [...editLineItems]
+                            updated[idx].quantity = e.target.value
+                            setEditLineItems(updated)
+                          }}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                        />
+                      </div>
+
+                      <div className="w-full md:w-32">
+                        <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Unit</label>
+                        <select
+                          value={item.unit}
+                          onChange={(e) => {
+                            const updated = [...editLineItems]
+                            updated[idx].unit = e.target.value
+                            setEditLineItems(updated)
+                          }}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                        >
+                          <option value="Pieces">Pieces (Pcs)</option>
+                          <option value="Carton">Carton</option>
+                        </select>
+                      </div>
+
+                      <div className="text-right px-2 py-2 text-xs text-zinc-500 font-mono hidden md:block">
+                        Rate: {formatCurrency(getProductRate(item.product_id))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLineItem(idx)}
+                        disabled={editLineItems.length === 1}
+                        className="p-2 hover:bg-red-500/10 hover:text-red-400 text-zinc-555 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
+                        title="Remove Item"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Logistics Cost Edit Section */}
+                  <div className="mt-6 pt-6 border-t border-zinc-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                        <span className="text-zinc-550 font-bold">$</span> Logistics Costs Edit
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditOtherCosts([
+                            ...editOtherCosts,
+                            { id: Math.random().toString(36).substr(2, 9), name: '', amount: '0' }
+                          ])
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 hover:text-white text-xs font-semibold rounded-lg border border-zinc-700 transition-colors"
+                      >
+                        <Plus size={12} /> Add Cost
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Fuel Cost (₦)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editFuelCost}
+                          onChange={(e) => setEditFuelCost(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-500 mb-1">Waybill Cost (₦)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editWaybillCost}
+                          onChange={(e) => setEditWaybillCost(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-zinc-750 transition-colors text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {editOtherCosts.length > 0 && (
+                      <div className="space-y-2 pt-2">
+                        {editOtherCosts.map((cost, costIdx) => (
+                          <div key={cost.id} className="flex gap-2 items-center bg-zinc-950/20 p-2.5 rounded-xl border border-zinc-800">
+                            <input
+                              type="text"
+                              placeholder="Cost Name (e.g. Loading Fee)"
+                              required
+                              value={cost.name}
+                              onChange={(e) => {
+                                const updated = [...editOtherCosts]
+                                updated[costIdx].name = e.target.value
+                                setEditOtherCosts(updated)
+                              }}
+                              className="flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                            />
+                            <input
+                              type="number"
+                              placeholder="Amount"
+                              min="0"
+                              step="any"
+                              required
+                              value={cost.amount}
+                              onChange={(e) => {
+                                const updated = [...editOtherCosts]
+                                updated[costIdx].amount = e.target.value
+                                setEditOtherCosts(updated)
+                              }}
+                              className="w-28 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setEditOtherCosts(editOtherCosts.filter(c => c.id !== cost.id))}
+                              className="p-1.5 hover:bg-red-500/10 hover:text-red-400 text-zinc-555 rounded transition-colors flex-shrink-0"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            ) : displayOrder.reference_cards && displayOrder.reference_cards.length > 0 ? (
+              <div className="space-y-6">
+                {displayOrder.reference_cards.map((card, cardIdx) => (
+                  <div key={card.id || cardIdx} className="border border-zinc-800/80 rounded-xl overflow-hidden bg-zinc-950/20">
+                    <div className="px-4 py-2.5 bg-zinc-900 border-b border-zinc-800/80 flex items-center justify-between">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                        <span className="font-bold text-zinc-200">Ref Card #{cardIdx + 1}</span>
+                        <span className="text-zinc-500">|</span>
+                        <span className="text-zinc-400"><span className="text-zinc-500 font-medium">Invoice:</span> <span className="font-mono">{card.invoice_number}</span></span>
+                        <span className="text-zinc-500">•</span>
+                        <span className="text-zinc-400"><span className="text-zinc-500 font-medium">Delivery:</span> <span className="font-mono">{card.waybill_number}</span></span>
+                      </div>
+                      <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                        card.brand?.toUpperCase() === 'DSLP'
+                          ? 'bg-purple-500/25 text-purple-400 border border-purple-500/35'
+                          : 'bg-sky-500/25 text-sky-400 border border-sky-500/35'
+                      }`}>
+                        {card.brand}
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-zinc-800 bg-zinc-950/30">
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-zinc-400">Product Specification</th>
+                            <th className="px-4 py-2 text-right text-xs font-semibold text-zinc-400">Unit Type</th>
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-zinc-400">Quantity</th>
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-zinc-400">Rate</th>
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-zinc-400">Line Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/60">
+                          {card.line_items.map((item, idx) => {
+                            const isItemDiff = isLineItemDifferent(item)
+                            return (
+                              <tr key={idx} className="hover:bg-zinc-800/10 transition-colors">
+                                <td className={`px-4 py-3 text-sm font-bold ${isItemDiff ? 'text-yellow-500' : 'text-white'}`}>
+                                  <div className="flex items-center gap-2">
+                                    <span>{item.product_name}</span>
+                                    {item.product_brand && (
+                                      <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                                        item.product_brand.toUpperCase() === 'DSLP'
+                                          ? 'bg-purple-500/25 text-purple-400 border border-purple-500/35'
+                                          : 'bg-sky-500/25 text-sky-400 border border-sky-500/35'
+                                      }`}>
+                                        {item.product_brand}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {getLineItemDiffMarker(item)}
+                                </td>
+                                <td className={`px-4 py-3 text-sm text-right capitalize ${isItemDiff ? 'text-yellow-500/90 font-medium' : 'text-zinc-400'}`}>
+                                  {item.unit === 'Pieces' ? 'Pieces (Pcs)' : item.unit}
+                                </td>
+                                <td className={`px-4 py-3 text-sm text-center font-mono ${isItemDiff ? 'text-yellow-500 font-bold' : 'text-zinc-300'}`}>
+                                  {item.quantity} {item.unit === 'Carton' && `(${item.quantity * getConversionFactor(item.product_name)} Pcs)`}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-center text-zinc-400" style={{ fontFamily: '"Lora", Georgia, serif' }}>
+                                  {formatCurrency(item.unit_price)}
+                                </td>
+                                <td className={`px-4 py-3 text-sm text-center font-semibold ${isItemDiff ? 'text-yellow-500' : 'text-white'}`} style={{ fontFamily: '"Lora", Georgia, serif' }}>
+                                  {formatCurrency(item.total_price || (item.unit_price * item.quantity))}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="overflow-x-auto">

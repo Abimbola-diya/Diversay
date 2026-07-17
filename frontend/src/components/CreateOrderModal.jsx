@@ -127,13 +127,20 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     return ''
   }
 
-  const getFilteredProductsForOrder = (order) => {
+  const getFilteredProductsForCard = (order, brand) => {
     const departureStoreId = getDepartureStoreId(order)
-    if (!departureStoreId) return products
-    const inventory = storeInventories[departureStoreId]
-    if (!inventory) return products
-    const storeProductIds = new Set(inventory.map(item => item.product_id))
-    return products.filter(p => storeProductIds.has(p.id))
+    let filtered = products
+    if (departureStoreId) {
+      const inventory = storeInventories[departureStoreId]
+      if (inventory) {
+        const storeProductIds = new Set(inventory.map(item => item.product_id))
+        filtered = products.filter(p => storeProductIds.has(p.id))
+      }
+    }
+    if (brand) {
+      filtered = filtered.filter(p => (p.brand || '').toUpperCase() === brand.toUpperCase())
+    }
+    return filtered
   }
 
   const getAvailableStock = (order, productId) => {
@@ -195,10 +202,9 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       otherCosts: [],
       notes: '',
       waybills: [
-        { id: Math.random().toString(36).substr(2, 9), brand: 'DSL', waybillNumber: '', invoiceNumber: '' }
-      ],
-      lineItems: [
-        { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }
+        { id: Math.random().toString(36).substr(2, 9), brand: 'DSL', waybillNumber: '', invoiceNumber: '', lineItems: [
+          { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }
+        ] }
       ]
     }
   }
@@ -211,7 +217,9 @@ export default function CreateOrderModal({ isOpen, onClose }) {
           ...o,
           waybills: [
             ...o.waybills,
-            { id: Math.random().toString(36).substr(2, 9), brand: defaultBrand, waybillNumber: '', invoiceNumber: '' }
+            { id: Math.random().toString(36).substr(2, 9), brand: defaultBrand, waybillNumber: '', invoiceNumber: '', lineItems: [
+              { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }
+            ] }
           ]
         }
       }
@@ -357,13 +365,16 @@ export default function CreateOrderModal({ isOpen, onClose }) {
 
       // Initialize searchQuery for line items if pre-selected, and also resolve customer search typed during load
       setBatchOrders(prevOrders => prevOrders.map(order => {
-        const updatedLineItems = order.lineItems.map(item => {
-          if (item.product_id && !item.searchQuery) {
-            const prod = fetchedProducts.find(p => p.id === parseInt(item.product_id))
-            return { ...item, searchQuery: prod ? prod.name : '' }
-          }
-          return item
-        })
+        const updatedWaybills = order.waybills ? order.waybills.map(wb => {
+          const updatedLineItems = wb.lineItems ? wb.lineItems.map(item => {
+            if (item.product_id && !item.searchQuery) {
+              const prod = fetchedProducts.find(p => p.id === parseInt(item.product_id))
+              return { ...item, searchQuery: prod ? prod.name : '' }
+            }
+            return item
+          }) : []
+          return { ...wb, lineItems: updatedLineItems }
+        }) : []
 
         // If they typed something while loading, match it now
         const matched = order.customerSearchQuery
@@ -373,7 +384,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
         return {
           ...order,
           sourceStoreId: order.sourceStoreId || centralStoreIdStr,
-          lineItems: updatedLineItems,
+          waybills: updatedWaybills,
           matchingCustomers: matched.slice(0, 4),
           showCustomerDropdown: order.customerSearchQuery ? true : order.showCustomerDropdown
         }
@@ -480,13 +491,17 @@ export default function CreateOrderModal({ isOpen, onClose }) {
     }))
   }
 
-  // Add line item inside a specific order
-  const handleAddLineItem = (orderId) => {
+  const handleAddLineItem = (orderId, waybillId) => {
     setBatchOrders(prev => prev.map(o => {
       if (o.id === orderId) {
         return {
           ...o,
-          lineItems: [...o.lineItems, { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }]
+          waybills: o.waybills.map(w => {
+            if (w.id === waybillId) {
+              return { ...w, lineItems: [...w.lineItems, { product_id: '', quantity: 1, unit: 'Pieces', searchQuery: '' }] }
+            }
+            return w
+          })
         }
       }
       return o
@@ -612,13 +627,18 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   }
 
   // Remove line item inside a specific order
-  const handleRemoveLineItem = (orderId, itemIndex) => {
+  const handleRemoveLineItem = (orderId, waybillId, itemIndex) => {
     setBatchOrders(prev => prev.map(o => {
       if (o.id === orderId) {
-        if (o.lineItems.length === 1) return o
         return {
           ...o,
-          lineItems: o.lineItems.filter((_, idx) => idx !== itemIndex)
+          waybills: o.waybills.map(w => {
+            if (w.id === waybillId) {
+              if (w.lineItems.length === 1) return w
+              return { ...w, lineItems: w.lineItems.filter((_, idx) => idx !== itemIndex) }
+            }
+            return w
+          })
         }
       }
       return o
@@ -626,20 +646,28 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   }
 
   // Update line item details inside a specific order
-  const handleLineItemChange = (orderId, itemIndex, field, value) => {
+  const handleLineItemChange = (orderId, waybillId, itemIndex, field, value) => {
     setBatchOrders(prev => prev.map(o => {
       if (o.id === orderId) {
-        const updatedItems = o.lineItems.map((item, idx) => {
-          if (idx === itemIndex) {
-            const newItem = { ...item, [field]: value }
-            if (field === 'searchQuery' && !value) {
-              newItem.product_id = ''
+        return {
+          ...o,
+          waybills: o.waybills.map(w => {
+            if (w.id === waybillId) {
+              const updatedItems = w.lineItems.map((item, idx) => {
+                if (idx === itemIndex) {
+                  const newItem = { ...item, [field]: value }
+                  if (field === 'searchQuery' && !value) {
+                    newItem.product_id = ''
+                  }
+                  return newItem
+                }
+                return item
+              })
+              return { ...w, lineItems: updatedItems }
             }
-            return newItem
-          }
-          return item
-        })
-        return { ...o, lineItems: updatedItems }
+            return w
+          })
+        }
       }
       return o
     }))
@@ -709,24 +737,26 @@ export default function CreateOrderModal({ isOpen, onClose }) {
           setError(`Please fill in both the Invoice No and Delivery No for card #${w + 1} in ${orderLabel}.`)
           return
         }
-      }
-      
-      // Validate line items
-      const invalidItem = order.lineItems.find(item => !item.product_id || item.quantity <= 0)
-      if (invalidItem) {
-        setError(`Please select a product and valid quantity for all line items in ${orderLabel}.`)
-        return
+        // Validate line items within each reference card
+        const invalidItem = wb.lineItems.find(item => !item.product_id || item.quantity <= 0)
+        if (invalidItem) {
+          setError(`Please select a product and valid quantity for all line items in Reference Card #${w + 1} of ${orderLabel}.`)
+          return
+        }
       }
 
-      // Validate available stock levels
-      for (let j = 0; j < order.lineItems.length; j++) {
-        const item = order.lineItems[j]
-        const stock = getAvailableStock(order, item.product_id)
-        if (stock !== null && parseFloat(item.quantity || 0) > stock) {
-          const prodName = products.find(p => p.id === parseInt(item.product_id))?.name || 'product'
-          const storeName = stores.find(s => s.id.toString() === getDepartureStoreId(order))?.name || 'selected store'
-          setError(`Requested quantity for "${prodName}" (${item.quantity}) exceeds available stock in ${storeName} (${stock} remaining).`)
-          return
+      // Validate available stock levels across all reference cards
+      for (let w = 0; w < order.waybills.length; w++) {
+        const wb = order.waybills[w]
+        for (let j = 0; j < wb.lineItems.length; j++) {
+          const item = wb.lineItems[j]
+          const stock = getAvailableStock(order, item.product_id)
+          if (stock !== null && parseFloat(item.quantity || 0) > stock) {
+            const prodName = products.find(p => p.id === parseInt(item.product_id))?.name || 'product'
+            const storeName = stores.find(s => s.id.toString() === getDepartureStoreId(order))?.name || 'selected store'
+            setError(`Requested quantity for "${prodName}" (${item.quantity}) exceeds available stock in ${storeName} (${stock} remaining).`)
+            return
+          }
         }
       }
     }
@@ -739,71 +769,40 @@ export default function CreateOrderModal({ isOpen, onClose }) {
 
       for (let i = 0; i < batchOrders.length; i++) {
         const order = batchOrders[i]
-        const orderLabel = batchOrders.length > 1 ? `Order #${i + 1}` : 'The order'
 
-        // Resolve brand for each line item
-        const itemsWithBrand = order.lineItems.map(item => {
-          const prod = products.find(p => p.id === parseInt(item.product_id))
-          const brand = prod ? (prod.brand || 'DSL').toUpperCase() : 'DSL'
-          return { ...item, brand }
-        })
-
-        // Validate unpaired products when multiple waybills are present
-        if (order.waybills.length > 1) {
-          const unpaired = itemsWithBrand.filter(item => 
-            !order.waybills.some(wb => wb.brand.toUpperCase() === item.brand)
-          )
-          if (unpaired.length > 0) {
-            const firstUnpairedProdName = products.find(p => p.id === parseInt(unpaired[0].product_id))?.name || 'product'
-            setError(`Please add a waybill/invoice reference card for brand "${unpaired[0].brand}" in ${orderLabel} to pair with product "${firstUnpairedProdName}".`)
-            setSubmitting(false)
-            return
-          }
-        }
-
-        // Construct payload(s) for each waybill reference card
-        for (let w = 0; w < order.waybills.length; w++) {
-          const wb = order.waybills[w]
+        // Build reference_cards array for this order
+        const referenceCards = order.waybills.map(wb => {
           const fullWb = (wb.brand === 'DSL' ? 'DSL/DLN/' : 'DSLP/DLN/') + wb.waybillNumber.trim()
           const fullInv = (wb.brand === 'DSL' ? 'DSL/SA/' : 'DSLP/SA/') + wb.invoiceNumber.trim()
-
-          let matchedItems = []
-          if (order.waybills.length === 1) {
-            matchedItems = itemsWithBrand
-          } else {
-            matchedItems = itemsWithBrand.filter(item => item.brand === wb.brand.toUpperCase())
-          }
-
-          if (matchedItems.length === 0) {
-            setError(`Please add at least one "${wb.brand}" product to pair with waybill reference "${fullWb}" in ${orderLabel}, or remove the extra reference card.`)
-            setSubmitting(false)
-            return
-          }
-
-          payloads.push({
-            customer_id: parseInt(order.customerId),
-            source_store_id: order.sourceStoreId ? parseInt(order.sourceStoreId) : null,
-            destination_store_id: order.destinationStoreId ? parseInt(order.destinationStoreId) : null,
-            waybill_number: fullWb,
+          return {
             invoice_number: fullInv,
-            dispatch_time: new Date(order.dispatchTime).toISOString(),
-            expected_delivery_time: new Date(order.expectedDeliveryTime).toISOString(),
-            driver_name: order.driverName || null,
-            vehicle_number: order.vehicleNumber || null,
-            fuel_cost: parseFloat(order.fuelCost || 0),
-            waybill_cost: parseFloat(order.waybillCost || 0),
-            other_costs: order.otherCosts.map(c => ({ name: c.name, amount: parseFloat(c.amount || 0) })),
-            notes: order.notes || null,
-            line_items: matchedItems.map(item => ({
+            waybill_number: fullWb,
+            brand: wb.brand,
+            line_items: wb.lineItems.map(item => ({
               product_id: parseInt(item.product_id),
               quantity: parseFloat(item.quantity),
               unit: item.unit
             }))
-          })
-        }
+          }
+        })
+
+        payloads.push({
+          customer_id: parseInt(order.customerId),
+          source_store_id: order.sourceStoreId ? parseInt(order.sourceStoreId) : null,
+          destination_store_id: order.destinationStoreId ? parseInt(order.destinationStoreId) : null,
+          dispatch_time: new Date(order.dispatchTime).toISOString(),
+          expected_delivery_time: new Date(order.expectedDeliveryTime).toISOString(),
+          driver_name: order.driverName || null,
+          vehicle_number: order.vehicleNumber || null,
+          fuel_cost: parseFloat(order.fuelCost || 0),
+          waybill_cost: parseFloat(order.waybillCost || 0),
+          other_costs: order.otherCosts.map(c => ({ name: c.name, amount: parseFloat(c.amount || 0) })),
+          notes: order.notes || null,
+          reference_cards: referenceCards
+        })
       }
 
-      // Send all POST requests concurrently
+      // Send all POST requests concurrently (one per batch order — usually just 1)
       const requests = payloads.map(payload => api.post('/orders/', payload))
 
       try {
@@ -1080,6 +1079,136 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                                     className="w-full px-3 py-2 bg-transparent text-zinc-100 placeholder-zinc-700 focus:outline-none text-xs"
                                   />
                                 </div>
+                              </div>
+                            </div>
+
+                            {/* Products and Line Items for this Reference Card */}
+                            <div className="space-y-3 pt-3 border-t border-zinc-800/40">
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[10px] font-semibold text-zinc-450 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Package size={12} className="text-zinc-500" /> Products for this Card <span className="text-red-500">*</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddLineItem(order.id, wb.id)}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-[9px] font-extrabold bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
+                                >
+                                  <Plus size={10} /> Add Product
+                                </button>
+                              </div>
+                              <div className="space-y-2">
+                                {wb.lineItems.map((item, itemIdx) => {
+                                  const departureStoreId = getDepartureStoreId(order)
+                                  const availableStock = item.product_id ? getAvailableStock(order, item.product_id) : null
+                                  const selectedProduct = item.product_id ? products.find(p => p.id === parseInt(item.product_id)) : null
+                                  const factor = (item.unit === 'Carton' && selectedProduct) ? getConversionFactor(selectedProduct.name) : 1
+                                  const quantityInPcs = parseFloat(item.quantity || 0) * factor
+                                  const isExceeded = availableStock !== null && quantityInPcs > availableStock
+
+                                  return (
+                                    <div key={itemIdx} className="flex flex-col md:flex-row gap-2.5 items-end md:items-center bg-zinc-900/20 p-2.5 rounded-xl border border-zinc-800/60">
+                                      <div className="flex-1 w-full relative product-search-container">
+                                        <input
+                                          type="text"
+                                          placeholder="Type product name..."
+                                          required
+                                          value={item.searchQuery || ''}
+                                          onFocus={() => {
+                                            setActiveProductSearch({ orderId: order.id, waybillId: wb.id, itemIdx })
+                                            if (!item.searchQuery && item.product_id) {
+                                              const prod = products.find(p => p.id === parseInt(item.product_id))
+                                              if (prod) {
+                                                handleLineItemChange(order.id, wb.id, itemIdx, 'searchQuery', prod.name)
+                                              }
+                                            }
+                                          }}
+                                          onChange={(e) => handleLineItemChange(order.id, wb.id, itemIdx, 'searchQuery', e.target.value)}
+                                          className={`w-full pl-3 ${item.product_id ? 'pr-24' : 'pr-3'} py-1.5 bg-zinc-800 border border-zinc-700/80 rounded-lg text-zinc-100 placeholder-zinc-550 focus:outline-none focus:border-white transition-colors text-xs`}
+                                        />
+
+                                        {item.product_id && (
+                                          <div className="absolute right-2 top-[7px] flex items-center gap-1 text-[8px] font-bold text-zinc-450 bg-zinc-950/90 px-1.5 py-0.5 rounded border border-zinc-800/85 z-10 select-none">
+                                            <span>Stock:</span>
+                                            <span className={!departureStoreId ? "text-zinc-500" : (availableStock > 0 ? "text-emerald-400" : "text-red-400")}>
+                                              {!departureStoreId ? "Select Store" : (availableStock !== null ? `${availableStock} Pcs (${parseFloat((availableStock / (selectedProduct ? getConversionFactor(selectedProduct.name) : 96)).toFixed(2))} Ctn)` : '...')}
+                                            </span>
+                                            {departureStoreId && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  invalidateCache(`/stores/${departureStoreId}/inventory`)
+                                                  setStoreInventories(prev => {
+                                                    const copy = { ...prev }
+                                                    delete copy[departureStoreId]
+                                                    return copy
+                                                  })
+                                                  fetchStoreInventory(departureStoreId, true)
+                                                }}
+                                                className="ml-1 text-zinc-550 hover:text-white transition-colors flex items-center"
+                                                title="Refresh Stock"
+                                              >
+                                                <RefreshCw size={8} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                        
+                                        {activeProductSearch?.orderId === order.id && activeProductSearch?.waybillId === wb.id && activeProductSearch?.itemIdx === itemIdx && (
+                                          <ProductSearchDropdown
+                                            query={item.searchQuery || ''}
+                                            products={getFilteredProductsForCard(order, wb.brand)}
+                                            onSelect={(product) => {
+                                              handleLineItemChange(order.id, wb.id, itemIdx, 'product_id', product.id.toString())
+                                              handleLineItemChange(order.id, wb.id, itemIdx, 'searchQuery', product.name)
+                                              setActiveProductSearch(null)
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+
+                                      <div className="w-full md:w-24 relative">
+                                        <input
+                                          type="number"
+                                          required
+                                          min="1"
+                                          step="any"
+                                          placeholder="Qty"
+                                          value={item.quantity}
+                                          onChange={(e) => handleLineItemChange(order.id, wb.id, itemIdx, 'quantity', e.target.value)}
+                                          className={`w-full px-2.5 py-1.5 bg-zinc-800 border rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-xs ${
+                                            isExceeded ? 'border-red-500 focus:border-red-500 text-red-400' : 'border-zinc-700/80'
+                                          }`}
+                                        />
+                                        {isExceeded && (
+                                          <span className="absolute left-0 top-full text-[8px] text-red-400 font-bold block mt-0.5 whitespace-nowrap bg-zinc-950/90 px-1 py-0.5 rounded border border-red-500/20 z-10">
+                                            Max {availableStock} available
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div className="w-full md:w-28">
+                                        <select
+                                          value={item.unit}
+                                          onChange={(e) => handleLineItemChange(order.id, wb.id, itemIdx, 'unit', e.target.value)}
+                                          className="w-full px-2.5 py-1.5 bg-zinc-800 border border-zinc-700/80 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-xs"
+                                        >
+                                          <option value="Pieces">Pieces (Pcs)</option>
+                                          <option value="Carton">Carton</option>
+                                        </select>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveLineItem(order.id, wb.id, itemIdx)}
+                                        disabled={wb.lineItems.length === 1}
+                                        className="p-1.5 hover:bg-red-500/10 hover:text-red-400 text-zinc-550 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
+                                        title="Remove Item"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             </div>
                           </div>
@@ -1465,149 +1594,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                         </div>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Step 3: Line Items */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-800">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-                        <Package size={14} /> Products & Line Items <span className="text-red-500">*</span>
-                      </h4>
-                    </div>
-
-                    <div className="space-y-3">
-                      {order.lineItems.map((item, itemIdx) => {
-                        const departureStoreId = getDepartureStoreId(order)
-                        const availableStock = item.product_id ? getAvailableStock(order, item.product_id) : null
-                        const selectedProduct = item.product_id ? products.find(p => p.id === parseInt(item.product_id)) : null
-                        const factor = (item.unit === 'Carton' && selectedProduct) ? getConversionFactor(selectedProduct.name) : 1
-                        const quantityInPcs = parseFloat(item.quantity || 0) * factor
-                        const isExceeded = availableStock !== null && quantityInPcs > availableStock
-
-                        return (
-                          <div 
-                            key={itemIdx} 
-                            className="flex flex-col md:flex-row gap-3 items-end md:items-center bg-zinc-950/20 p-3 rounded-xl border border-zinc-800"
-                          >
-                            <div className="flex-1 w-full relative product-search-container">
-                              <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Product</label>
-                              <input
-                                type="text"
-                                placeholder="Type product name..."
-                                required
-                                value={item.searchQuery || ''}
-                                onFocus={() => {
-                                  setActiveProductSearch({ orderId: order.id, itemIdx })
-                                  if (!item.searchQuery && item.product_id) {
-                                    const prod = products.find(p => p.id === parseInt(item.product_id))
-                                    if (prod) {
-                                      handleLineItemChange(order.id, itemIdx, 'searchQuery', prod.name)
-                                    }
-                                  }
-                                }}
-                                onChange={(e) => handleLineItemChange(order.id, itemIdx, 'searchQuery', e.target.value)}
-                                className={`w-full pl-3 ${item.product_id ? 'pr-24' : 'pr-3'} py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-white transition-colors text-sm`}
-                              />
-
-                              {item.product_id && (
-                                <div className="absolute right-2.5 top-[29px] md:top-[9px] flex items-center gap-1 text-[9px] font-bold text-zinc-400 bg-zinc-900/90 px-2 py-0.5 rounded border border-zinc-800 z-10 select-none">
-                                  <span>Stock:</span>
-                                  <span className={!departureStoreId ? "text-zinc-500" : (availableStock > 0 ? "text-emerald-400" : "text-red-400")}>
-                                    {!departureStoreId ? "Select Store" : (availableStock !== null ? `${availableStock} Pcs (${parseFloat((availableStock / (selectedProduct ? getConversionFactor(selectedProduct.name) : 96)).toFixed(2))} Ctn)` : '...')}
-                                  </span>
-                                  {departureStoreId && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        // Force refresh the specific store's inventory
-                                        invalidateCache(`/stores/${departureStoreId}/inventory`)
-                                        // Clear it in state first to show loading state
-                                        setStoreInventories(prev => {
-                                          const copy = { ...prev }
-                                          delete copy[departureStoreId]
-                                          return copy
-                                        })
-                                        fetchStoreInventory(departureStoreId, true)
-                                      }}
-                                      className="ml-1 text-zinc-500 hover:text-white transition-colors flex items-center"
-                                      title="Refresh Stock"
-                                    >
-                                      <RefreshCw size={10} />
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {activeProductSearch?.orderId === order.id && activeProductSearch?.itemIdx === itemIdx && (
-                                <ProductSearchDropdown
-                                  query={item.searchQuery || ''}
-                                  products={getFilteredProductsForOrder(order)}
-                                  onSelect={(product) => {
-                                    handleLineItemChange(order.id, itemIdx, 'product_id', product.id.toString())
-                                    handleLineItemChange(order.id, itemIdx, 'searchQuery', product.name)
-                                    setActiveProductSearch(null)
-                                  }}
-                                />
-                              )}
-                            </div>
-
-                            <div className="w-full md:w-32 relative">
-                              <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Quantity</label>
-                              <input
-                                type="number"
-                                required
-                                min="1"
-                                step="any"
-                                placeholder="Qty"
-                                value={item.quantity}
-                                onChange={(e) => handleLineItemChange(order.id, itemIdx, 'quantity', e.target.value)}
-                                className={`w-full px-3 py-2 bg-zinc-800 border rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm ${
-                                  isExceeded ? 'border-red-500 focus:border-red-500 text-red-400' : 'border-zinc-700'
-                                }`}
-                              />
-                              {isExceeded && (
-                                <span className="absolute left-0 top-full text-[9px] text-red-400 font-bold block mt-0.5 whitespace-nowrap bg-zinc-950/90 px-1 py-0.5 rounded border border-red-500/20 z-10">
-                                  Max {availableStock} available
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="w-full md:w-36">
-                              <label className="block text-[10px] font-semibold text-zinc-500 mb-1 md:hidden">Unit</label>
-                              <select
-                                value={item.unit}
-                                onChange={(e) => handleLineItemChange(order.id, itemIdx, 'unit', e.target.value)}
-                                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:border-white transition-colors text-sm"
-                              >
-                                <option value="Pieces">Pieces (Pcs)</option>
-                                <option value="Carton">Carton</option>
-                              </select>
-                            </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLineItem(order.id, itemIdx)}
-                            disabled={order.lineItems.length === 1}
-                            className="p-2 hover:bg-red-500/10 hover:text-red-400 text-zinc-500 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
-                            title="Remove Item"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      )
-                    })}
-                    </div>
-
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleAddLineItem(order.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-805 hover:bg-zinc-800 text-white hover:text-zinc-200 text-xs font-semibold rounded-lg border border-zinc-800 transition-colors"
-                      >
-                        <Plus size={14} /> Add Product
-                      </button>
-                    </div>
-                  </div>
+                              {/* Step 3: Line Items are now rendered inside each reference card above */}        </div>
 
                   {/* Step 3.5: Logistics Costs */}
                   <div className="space-y-4 pt-4 border-t border-zinc-800">

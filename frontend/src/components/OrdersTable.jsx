@@ -27,6 +27,7 @@ export default function OrdersTable() {
   const [scrollPosition, setScrollPosition] = useState({})
   const [activeDeliveryEditOrderId, setActiveDeliveryEditOrderId] = useState(null)
   const [deliveryTimeInput, setDeliveryTimeInput] = useState('')
+  const [submittingOrderId, setSubmittingOrderId] = useState(null)
   const fetchRequestRef = useRef(0)
 
   useEffect(() => {
@@ -309,7 +310,7 @@ export default function OrdersTable() {
 
   const handleMarkDelivered = async (orderId) => {
     try {
-      setLoading(true)
+      setSubmittingOrderId(orderId)
       const res = await api.patch(`/orders/${orderId}/mark-delivered`, {
         actual_delivery_time: new Date(deliveryTimeInput).toISOString()
       })
@@ -318,7 +319,7 @@ export default function OrdersTable() {
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to mark order as delivered.')
     } finally {
-      setLoading(false)
+      setSubmittingOrderId(null)
     }
   }
 
@@ -804,14 +805,20 @@ export default function OrdersTable() {
                             <button
                               type="button"
                               onClick={() => handleMarkDelivered(order.id)}
-                              className="flex-1 py-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[9px] uppercase tracking-wider rounded transition-colors"
+                              disabled={submittingOrderId === order.id}
+                              className="flex-1 py-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold text-[9px] uppercase tracking-wider rounded transition-colors flex items-center justify-center gap-1"
                             >
-                              Confirm
+                              {submittingOrderId === order.id ? (
+                                <span className="inline-block animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
+                              ) : (
+                                'Confirm'
+                              )}
                             </button>
                             <button
                               type="button"
                               onClick={() => setActiveDeliveryEditOrderId(null)}
-                              className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-white font-bold text-[9px] uppercase tracking-wider rounded transition-colors"
+                              disabled={submittingOrderId === order.id}
+                              className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-zinc-300 hover:text-white font-bold text-[9px] uppercase tracking-wider rounded transition-colors"
                             >
                               Cancel
                             </button>

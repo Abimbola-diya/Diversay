@@ -7,28 +7,45 @@ from typing import List, Tuple
 import io
 import json
 
+def to_naive(dt: datetime) -> datetime:
+    """Normalize a datetime to UTC naive datetime."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
 def calculate_order_status(order: Order) -> OrderStatus:
     """Calculate order status based on timestamps and delivery status."""
-    if order.actual_delivery_time:
-        if order.actual_delivery_time <= order.expected_delivery_time:
+    actual = to_naive(order.actual_delivery_time)
+    expected = to_naive(order.expected_delivery_time)
+    dispatch = to_naive(order.dispatch_time)
+    
+    if actual:
+        if expected is None:
+            return OrderStatus.DELIVERED_ON_TIME
+        if actual <= expected:
             return OrderStatus.DELIVERED_ON_TIME
         else:
             return OrderStatus.DELIVERED_LATE
     else:
-        if not order.dispatch_time:
+        if not dispatch:
             return OrderStatus.DRAFT
         
-        # Dynamically match timezone awareness of order.expected_delivery_time
-        now = datetime.now(timezone.utc) if (order.expected_delivery_time and order.expected_delivery_time.tzinfo) else datetime.utcnow()
-        if now <= order.expected_delivery_time:
+        now = datetime.utcnow()
+        if expected is None:
+            return OrderStatus.IN_TRANSIT
+        if now <= expected:
             return OrderStatus.IN_TRANSIT
         else:
             return OrderStatus.DELAYED
 
 def calculate_delivery_duration(order: Order) -> int:
     """Calculate delivery duration in hours between dispatch and actual delivery."""
-    if order.dispatch_time and order.actual_delivery_time:
-        delta = order.actual_delivery_time - order.dispatch_time
+    dispatch = to_naive(order.dispatch_time)
+    actual = to_naive(order.actual_delivery_time)
+    if dispatch and actual:
+        delta = actual - dispatch
         return int(delta.total_seconds() / 3600)
     return None
 
@@ -205,6 +222,31 @@ def get_order_with_details(order: Order) -> dict:
             "requesting_admin": order.created_by_user.requesting_admin
         }
 
+    def serialize_line_item(item):
+        return {
+            "id": item.id,
+            "product_id": item.product_id,
+            "product_name": item.product.name if item.product else "Unknown",
+            "product_brand": item.product.brand if item.product else None,
+            "quantity": item.quantity,
+            "unit": item.unit.value,
+            "unit_price": avg_logistics_rate,
+            "total_price": avg_logistics_rate * item.quantity,
+            "created_at": item.created_at
+        }
+
+    # Build reference cards response
+    ref_cards_list = []
+    if hasattr(order, 'reference_cards') and order.reference_cards:
+        for card in order.reference_cards:
+            ref_cards_list.append({
+                "id": card.id,
+                "invoice_number": card.invoice_number,
+                "waybill_number": card.waybill_number,
+                "brand": card.brand or "DSL",
+                "line_items": [serialize_line_item(item) for item in card.line_items]
+            })
+
     return {
         "id": order.id,
         "order_number": order.order_number,
@@ -238,25 +280,15 @@ def get_order_with_details(order: Order) -> dict:
         "created_at": order.created_at,
         "updated_at": order.updated_at,
         "total_amount": total_amount,
-        "line_items": [
-            {
-                "id": item.id,
-                "product_id": item.product_id,
-                "product_name": item.product.name,
-                "product_brand": item.product.brand,
-                "quantity": item.quantity,
-                "unit": item.unit.value,
-                "unit_price": avg_logistics_rate,
-                "total_price": avg_logistics_rate * item.quantity,
-                "created_at": item.created_at
-            }
-            for item in order.line_items
-        ]
+        "line_items": [serialize_line_item(item) for item in order.line_items],
+        "reference_cards": ref_cards_list
     }
 
 def calculate_hours_overdue(expected_time: datetime) -> int:
     """Calculate how many hours past expected delivery time."""
-    # Dynamically match timezone awareness of expected_time
-    now = datetime.now(timezone.utc) if (expected_time and expected_time.tzinfo) else datetime.utcnow()
-    delta = now - expected_time
+    expected = to_naive(expected_time)
+    if expected is None:
+        return 0
+    now = datetime.utcnow()
+    delta = now - expected
     return int(delta.total_seconds() / 3600)

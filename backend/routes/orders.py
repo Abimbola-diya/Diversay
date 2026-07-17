@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from database import get_db
-from models import User, Order, OrderLineItem, Product, Customer, AuditLog, OrderStatus, ActionType, Store, StoreInventory, UnitType
-from schemas import OrderCreate, OrderUpdate, OrderStatusUpdate, OrderResponse, OrderDetailResponse, AuditLogResponse, MarkDeliveredRequest
+from models import User, Order, OrderLineItem, OrderReferenceCard, Product, Customer, AuditLog, OrderStatus, ActionType, Store, StoreInventory, UnitType
+from schemas import OrderCreate, OrderUpdate, OrderStatusUpdate, OrderResponse, OrderDetailResponse, AuditLogResponse, MarkDeliveredRequest, ReferenceCardCreate
 from auth import get_current_user, check_admin, check_write_access
 from utils import calculate_order_status, calculate_delivery_duration, generate_order_number, get_order_with_details, calculate_hours_overdue
 from datetime import datetime, timedelta
@@ -47,8 +47,31 @@ def get_order_snapshot(order: Order):
             "product_brand": prod_brand,
             "quantity": item.quantity,
             "unit": item.unit.value if hasattr(item.unit, 'value') else str(item.unit),
-            "unit_price": item.unit_price
+            "unit_price": item.unit_price,
+            "reference_card_id": item.reference_card_id
         })
+    
+    ref_cards_snapshot = []
+    if hasattr(order, 'reference_cards') and order.reference_cards:
+        for card in order.reference_cards:
+            card_items = []
+            for item in card.line_items:
+                prod_name = item.product.name if item.product else "Unknown Product"
+                prod_brand = item.product.brand if item.product else None
+                card_items.append({
+                    "product_id": item.product_id,
+                    "product_name": prod_name,
+                    "product_brand": prod_brand,
+                    "quantity": item.quantity,
+                    "unit": item.unit.value if hasattr(item.unit, 'value') else str(item.unit),
+                    "unit_price": item.unit_price
+                })
+            ref_cards_snapshot.append({
+                "invoice_number": card.invoice_number,
+                "waybill_number": card.waybill_number,
+                "brand": card.brand,
+                "line_items": card_items
+            })
         
     return {
         "waybill_number": order.waybill_number,
@@ -66,7 +89,8 @@ def get_order_snapshot(order: Order):
         "waybill_cost": order.waybill_cost,
         "other_costs": order.other_costs,
         "notes": order.notes,
-        "line_items": line_items_snapshot
+        "line_items": line_items_snapshot,
+        "reference_cards": ref_cards_snapshot
     }
 
 @router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
@@ -109,13 +133,32 @@ def create_order(
                 detail="Destination store not found"
             )
     
-    product_ids = [item.product_id for item in order_create.line_items]
+    # Validate we have either reference_cards or line_items
+    has_ref_cards = order_create.reference_cards and len(order_create.reference_cards) > 0
+    has_line_items = order_create.line_items and len(order_create.line_items) > 0
+    
+    if not has_ref_cards and not has_line_items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Order must have either reference_cards or line_items."
+        )
+    
+    # Collect all product IDs across all sources
+    all_line_items_data = []  # list of (product_id, quantity, unit) tuples
+    if has_ref_cards:
+        for card in order_create.reference_cards:
+            for item in card.line_items:
+                all_line_items_data.append(item)
+    else:
+        all_line_items_data = order_create.line_items
+    
+    product_ids = [item.product_id for item in all_line_items_data]
     products = db.query(Product).filter(
         Product.id.in_(product_ids),
         Product.is_deleted == False
     ).all()
     
-    if len(products) != len(product_ids):
+    if len(products) != len(set(product_ids)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="One or more products not found"
@@ -124,27 +167,61 @@ def create_order(
     # Create a map of product ID to product for quick lookup
     products_map = {p.id: p for p in products}
     
-    if order_create.waybill_number:
-        existing_waybill = db.query(Order).filter(
-            Order.waybill_number == order_create.waybill_number,
-            Order.is_deleted == False
-        ).first()
-        if existing_waybill:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Delivery No '{order_create.waybill_number}' is already in use by order {existing_waybill.order_number}."
-            )
-            
-    if order_create.invoice_number:
-        existing_invoice = db.query(Order).filter(
-            Order.invoice_number == order_create.invoice_number,
-            Order.is_deleted == False
-        ).first()
-        if existing_invoice:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invoice No '{order_create.invoice_number}' is already in use by order {existing_invoice.order_number}."
-            )
+    # Validate unique delivery/invoice numbers across reference cards and existing orders
+    if has_ref_cards:
+        for card in order_create.reference_cards:
+            if card.waybill_number:
+                existing_waybill = db.query(Order).join(OrderReferenceCard).filter(
+                    OrderReferenceCard.waybill_number == card.waybill_number,
+                    Order.is_deleted == False
+                ).first()
+                if not existing_waybill:
+                    existing_waybill = db.query(Order).filter(
+                        Order.waybill_number == card.waybill_number,
+                        Order.is_deleted == False
+                    ).first()
+                if existing_waybill:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Delivery No '{card.waybill_number}' is already in use by order {existing_waybill.order_number}."
+                    )
+            if card.invoice_number:
+                existing_invoice = db.query(Order).join(OrderReferenceCard).filter(
+                    OrderReferenceCard.invoice_number == card.invoice_number,
+                    Order.is_deleted == False
+                ).first()
+                if not existing_invoice:
+                    existing_invoice = db.query(Order).filter(
+                        Order.invoice_number == card.invoice_number,
+                        Order.is_deleted == False
+                    ).first()
+                if existing_invoice:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invoice No '{card.invoice_number}' is already in use by order {existing_invoice.order_number}."
+                    )
+    else:
+        if order_create.waybill_number:
+            existing_waybill = db.query(Order).filter(
+                Order.waybill_number == order_create.waybill_number,
+                Order.is_deleted == False
+            ).first()
+            if existing_waybill:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Delivery No '{order_create.waybill_number}' is already in use by order {existing_waybill.order_number}."
+                )
+                
+        if order_create.invoice_number:
+            existing_invoice = db.query(Order).filter(
+                Order.invoice_number == order_create.invoice_number,
+                Order.is_deleted == False
+            ).first()
+            if existing_invoice:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invoice No '{order_create.invoice_number}' is already in use by order {existing_invoice.order_number}."
+                )
 
     from sqlalchemy.exc import IntegrityError
     
@@ -153,13 +230,20 @@ def create_order(
     new_order = None
     order_number = None
 
+    # For reference_cards mode, store first card's numbers on the legacy Order fields for search compat
+    legacy_waybill = order_create.waybill_number
+    legacy_invoice = order_create.invoice_number
+    if has_ref_cards and order_create.reference_cards:
+        legacy_waybill = order_create.reference_cards[0].waybill_number
+        legacy_invoice = order_create.reference_cards[0].invoice_number
+
     try:
         for attempt in range(max_retries):
             order_number = generate_order_number(db)
             new_order = Order(
                 order_number=order_number,
-                waybill_number=order_create.waybill_number,
-                invoice_number=order_create.invoice_number,
+                waybill_number=legacy_waybill,
+                invoice_number=legacy_invoice,
                 customer_id=order_create.customer_id,
                 source_store_id=order_create.source_store_id,
                 destination_store_id=order_create.destination_store_id,
@@ -184,10 +268,8 @@ def create_order(
             except IntegrityError as e:
                 err_msg = str(e)
                 if "order_number" in err_msg or "ix_orders_order_number" in err_msg:
-                    # Savepoint is rolled back automatically. We loop again to get a fresh order number.
                     continue
                 else:
-                    # Let the outer try block handle it
                     raise
 
         if not inserted:
@@ -196,10 +278,11 @@ def create_order(
                 detail="Failed to generate a unique order number due to concurrent requests. Please try again."
             )
 
-        for item in order_create.line_items:
+        def process_line_item(item, ref_card=None):
             product = products_map.get(item.product_id)
             line_item = OrderLineItem(
                 order_id=new_order.id,
+                reference_card_id=ref_card.id if ref_card else None,
                 product_id=item.product_id,
                 quantity=item.quantity,
                 unit=item.unit,
@@ -239,14 +322,28 @@ def create_order(
                     db.add(dest_inv)
                 
                 factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
-                # Credit the destination (regional) store
                 dest_inv.stock += item.quantity * factor
                 
-                # If source store is central, then this is a 3-node supply: Central -> Regional -> Customer.
-                # In a 3-node supply, the regional store receives it (+quantity) and then ships it to customer (-quantity).
                 source_store = db.query(Store).filter(Store.id == order_create.source_store_id).first()
                 if source_store and source_store.is_central:
                     dest_inv.stock -= item.quantity * factor
+
+        if has_ref_cards:
+            for card_data in order_create.reference_cards:
+                ref_card = OrderReferenceCard(
+                    order_id=new_order.id,
+                    invoice_number=card_data.invoice_number,
+                    waybill_number=card_data.waybill_number,
+                    brand=card_data.brand
+                )
+                db.add(ref_card)
+                db.flush()  # Get the ref_card.id
+                
+                for item in card_data.line_items:
+                    process_line_item(item, ref_card)
+        else:
+            for item in order_create.line_items:
+                process_line_item(item)
         
         db.flush()
         
@@ -281,7 +378,8 @@ def create_order(
         joinedload(Order.source_store),
         joinedload(Order.destination_store),
         joinedload(Order.created_by_user),
-        joinedload(Order.line_items).joinedload(OrderLineItem.product)
+        joinedload(Order.line_items).joinedload(OrderLineItem.product),
+        joinedload(Order.reference_cards).joinedload(OrderReferenceCard.line_items).joinedload(OrderLineItem.product)
     ).filter(Order.id == new_order.id).first()
     
     return get_order_with_details(db_order)
@@ -359,6 +457,15 @@ def list_orders(
             Order.invoice_number.ilike(f"%{search_val}%"),
             Order.driver_name.ilike(f"%{search_val}%")
         ]
+        # Also search within reference card invoice/waybill numbers
+        ref_card_order_ids = [r[0] for r in db.query(OrderReferenceCard.order_id).filter(
+            or_(
+                OrderReferenceCard.invoice_number.ilike(f"%{search_val}%"),
+                OrderReferenceCard.waybill_number.ilike(f"%{search_val}%")
+            )
+        ).all()]
+        if ref_card_order_ids:
+            filters.append(Order.id.in_(ref_card_order_ids))
         if search_customer_ids:
             filters.append(Order.customer_id.in_(search_customer_ids))
         if order_ids_from_products:
@@ -412,7 +519,8 @@ def list_orders(
         joinedload(Order.created_by_user),
         joinedload(Order.source_store),
         joinedload(Order.destination_store),
-        joinedload(Order.line_items).joinedload(OrderLineItem.product)
+        joinedload(Order.line_items).joinedload(OrderLineItem.product),
+        joinedload(Order.reference_cards).joinedload(OrderReferenceCard.line_items).joinedload(OrderLineItem.product)
     )
     
     orders = query_fetch.order_by(Order.id.desc()).offset(skip).limit(limit).all()
@@ -440,7 +548,8 @@ def get_order_detail(
     ).options(
         joinedload(Order.customer),
         joinedload(Order.created_by_user),
-        joinedload(Order.line_items).joinedload(OrderLineItem.product)
+        joinedload(Order.line_items).joinedload(OrderLineItem.product),
+        joinedload(Order.reference_cards).joinedload(OrderReferenceCard.line_items).joinedload(OrderLineItem.product)
     ).first()
     
     if not order:
@@ -563,27 +672,144 @@ def update_order(
     if order_update.other_costs is not None:
         order.other_costs = order_update.other_costs
     
-    if order_update.line_items is not None:
+    # Revert and recreate line items/reference cards if either is provided
+    if order_update.reference_cards is not None or order_update.line_items is not None:
+        # 1. Revert stock for all existing line items
+        for old_item in order.line_items:
+            product = db.query(Product).filter(Product.id == old_item.product_id).first()
+            if product:
+                factor = get_conversion_factor(product.name) if old_item.unit == UnitType.CARTON else 1.0
+                qty_pcs = old_item.quantity * factor
+                # Revert source store deduction (add back)
+                if order.source_store_id:
+                    src_inv = db.query(StoreInventory).filter(
+                        StoreInventory.store_id == order.source_store_id,
+                        StoreInventory.product_id == old_item.product_id
+                    ).first()
+                    if src_inv:
+                        src_inv.stock += qty_pcs
+                # Revert destination store credit (subtract)
+                if order.destination_store_id:
+                    dest_inv = db.query(StoreInventory).filter(
+                        StoreInventory.store_id == order.destination_store_id,
+                        StoreInventory.product_id == old_item.product_id
+                    ).first()
+                    if dest_inv:
+                        dest_inv.stock -= qty_pcs
+                        source_store = db.query(Store).filter(Store.id == order.source_store_id).first()
+                        if source_store and source_store.is_central:
+                            dest_inv.stock += qty_pcs
+
+        # 2. Delete old records
         db.query(OrderLineItem).filter(OrderLineItem.order_id == order_id).delete()
-        
-        for item in order_update.line_items:
-            product = db.query(Product).filter(
-                Product.id == item.product_id,
-                Product.is_deleted == False
-            ).first()
-            if not product:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Product {item.product_id} not found"
+        db.query(OrderReferenceCard).filter(OrderReferenceCard.order_id == order_id).delete()
+
+        # 3. Create new records
+        if order_update.reference_cards is not None:
+            # Group mode
+            if len(order_update.reference_cards) > 0:
+                order.waybill_number = order_update.reference_cards[0].waybill_number
+                order.invoice_number = order_update.reference_cards[0].invoice_number
+
+            for card_data in order_update.reference_cards:
+                ref_card = OrderReferenceCard(
+                    order_id=order.id,
+                    invoice_number=card_data.invoice_number,
+                    waybill_number=card_data.waybill_number,
+                    brand=card_data.brand
                 )
-            
-            line_item = OrderLineItem(
-                order_id=order_id,
-                product_id=item.product_id,
-                quantity=item.quantity,
-                unit=item.unit
-            )
-            db.add(line_item)
+                db.add(ref_card)
+                db.flush()
+
+                for item in card_data.line_items:
+                    product = db.query(Product).filter(
+                        Product.id == item.product_id,
+                        Product.is_deleted == False
+                    ).first()
+                    if not product:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Product {item.product_id} not found"
+                        )
+                    line_item = OrderLineItem(
+                        order_id=order.id,
+                        reference_card_id=ref_card.id,
+                        product_id=item.product_id,
+                        quantity=item.quantity,
+                        unit=item.unit,
+                        unit_price=product.unit_price if product else 0.0
+                    )
+                    db.add(line_item)
+
+                    # Deduct stock
+                    factor = get_conversion_factor(product.name) if item.unit == UnitType.CARTON else 1.0
+                    qty_pcs = item.quantity * factor
+                    if order.source_store_id:
+                        src_inv = db.query(StoreInventory).filter(
+                            StoreInventory.store_id == order.source_store_id,
+                            StoreInventory.product_id == item.product_id
+                        ).first()
+                        if not src_inv:
+                            src_inv = StoreInventory(store_id=order.source_store_id, product_id=item.product_id, stock=0.0)
+                            db.add(src_inv)
+                        src_inv.stock -= qty_pcs
+                    if order.destination_store_id:
+                        dest_inv = db.query(StoreInventory).filter(
+                            StoreInventory.store_id == order.destination_store_id,
+                            StoreInventory.product_id == item.product_id
+                        ).first()
+                        if not dest_inv:
+                            dest_inv = StoreInventory(store_id=order.destination_store_id, product_id=item.product_id, stock=0.0)
+                            db.add(dest_inv)
+                        dest_inv.stock += qty_pcs
+                        source_store = db.query(Store).filter(Store.id == order.source_store_id).first()
+                        if source_store and source_store.is_central:
+                            dest_inv.stock -= qty_pcs
+        else:
+            # Flat mode
+            for item in order_update.line_items:
+                product = db.query(Product).filter(
+                    Product.id == item.product_id,
+                    Product.is_deleted == False
+                ).first()
+                if not product:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Product {item.product_id} not found"
+                    )
+                line_item = OrderLineItem(
+                    order_id=order.id,
+                    product_id=item.product_id,
+                    quantity=item.quantity,
+                    unit=item.unit,
+                    unit_price=product.unit_price if product else 0.0
+                )
+                db.add(line_item)
+
+                # Deduct stock
+                factor = get_conversion_factor(product.name) if item.unit == UnitType.CARTON else 1.0
+                qty_pcs = item.quantity * factor
+                if order.source_store_id:
+                    src_inv = db.query(StoreInventory).filter(
+                        StoreInventory.store_id == order.source_store_id,
+                        StoreInventory.product_id == item.product_id
+                    ).first()
+                    if not src_inv:
+                        src_inv = StoreInventory(store_id=order.source_store_id, product_id=item.product_id, stock=0.0)
+                        db.add(src_inv)
+                    src_inv.stock -= qty_pcs
+                if order.destination_store_id:
+                    dest_inv = db.query(StoreInventory).filter(
+                        StoreInventory.store_id == order.destination_store_id,
+                        StoreInventory.product_id == item.product_id
+                    ).first()
+                    if not dest_inv:
+                        dest_inv = StoreInventory(store_id=order.destination_store_id, product_id=item.product_id, stock=0.0)
+                        db.add(dest_inv)
+                    dest_inv.stock += qty_pcs
+                    source_store = db.query(Store).filter(Store.id == order.source_store_id).first()
+                    if source_store and source_store.is_central:
+                        dest_inv.stock -= qty_pcs
     
     update_order_status(order)
     

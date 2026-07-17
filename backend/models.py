@@ -123,12 +123,26 @@ class Order(Base):
     source_store = relationship("Store", foreign_keys=[source_store_id], backref="outgoing_transfers")
     destination_store = relationship("Store", foreign_keys=[destination_store_id], backref="incoming_transfers")
     line_items = relationship("OrderLineItem", back_populates="order", cascade="all, delete-orphan")
+    reference_cards = relationship("OrderReferenceCard", back_populates="order", cascade="all, delete-orphan", order_by="OrderReferenceCard.id")
+
+class OrderReferenceCard(Base):
+    __tablename__ = "order_reference_cards"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    invoice_number = Column(String, nullable=True)
+    waybill_number = Column(String, nullable=True)
+    brand = Column(String, default="DSL")
+    
+    order = relationship("Order", back_populates="reference_cards")
+    line_items = relationship("OrderLineItem", back_populates="reference_card", cascade="all, delete-orphan")
 
 class OrderLineItem(Base):
     __tablename__ = "order_line_items"
     
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    reference_card_id = Column(Integer, ForeignKey("order_reference_cards.id"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     quantity = Column(Float, nullable=False)
     unit = Column(Enum(UnitType), default=UnitType.PIECES)
@@ -136,6 +150,7 @@ class OrderLineItem(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     order = relationship("Order", back_populates="line_items")
+    reference_card = relationship("OrderReferenceCard", back_populates="line_items")
     product = relationship("Product", back_populates="line_items")
 
 class AuditLog(Base):
