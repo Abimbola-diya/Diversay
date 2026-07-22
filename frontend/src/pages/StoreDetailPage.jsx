@@ -170,6 +170,137 @@ export default function StoreDetailPage() {
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState('')
 
+  // Inter-Store Transfer State
+  const [showTransferModal, setShowTransferModal] = useState(false)
+  const [transferItem, setTransferItem] = useState(null)
+  const [allStores, setAllStores] = useState([])
+  const [destInventories, setDestInventories] = useState({})
+  const [transferRows, setTransferRows] = useState([{ destination_store_id: '', quantity: '' }])
+  const [transferSubmitting, setTransferSubmitting] = useState(false)
+  const [transferError, setTransferError] = useState('')
+  const [transferSuccessToast, setTransferSuccessToast] = useState('')
+
+  const handleOpenTransfer = async (item) => {
+    setTransferItem(item)
+    setTransferRows([{ destination_store_id: '', quantity: '' }])
+    setTransferError('')
+    setShowTransferModal(true)
+    try {
+      const res = await getWithCache('/stores/')
+      const loadedStores = res.data || []
+      setAllStores(loadedStores)
+
+      const invMap = {}
+      await Promise.all(
+        loadedStores.map(async (s) => {
+          try {
+            const invRes = await getWithCache(`/stores/${s.id}/inventory`)
+            invMap[s.id] = invRes.data || []
+          } catch (e) {
+            invMap[s.id] = []
+          }
+        })
+      )
+      setDestInventories(invMap)
+    } catch (err) {
+      console.error('Failed to load store list for transfer:', err)
+    }
+  }
+
+  const handleAddTransferRow = () => {
+    setTransferRows(prev => [...prev, { destination_store_id: '', quantity: '' }])
+  }
+
+  const handleRemoveTransferRow = (index) => {
+    if (transferRows.length === 1) return
+    setTransferRows(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleUpdateTransferRow = (index, field, value) => {
+    setTransferRows(prev => prev.map((row, i) => {
+      if (i !== index) return row
+
+      if (field === 'quantity') {
+        const availableStock = transferItem?.stock || 0
+        const otherRowsTotal = prev
+          .filter((_, idx) => idx !== index)
+          .reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0)
+        
+        const maxAllowed = Math.max(0, availableStock - otherRowsTotal)
+
+        if (value === '') {
+          return { ...row, quantity: '' }
+        }
+
+        const numVal = parseFloat(value)
+        if (!isNaN(numVal) && numVal > maxAllowed) {
+          return { ...row, quantity: maxAllowed > 0 ? maxAllowed.toString() : '0' }
+        }
+      }
+
+      return { ...row, [field]: value }
+    }))
+  }
+
+  const handleConfirmTransfer = async (e) => {
+    e.preventDefault()
+    if (!transferItem || !store) return
+
+    const validRows = transferRows.filter(r => r.destination_store_id && parseFloat(r.quantity) > 0)
+    if (validRows.length === 0) {
+      setTransferError('Please select at least one destination store and enter a valid quantity.')
+      return
+    }
+
+    const totalQty = validRows.reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0)
+    if (totalQty > (transferItem.stock || 0)) {
+      setTransferError(`Cannot transfer ${totalQty} ${transferItem.default_unit || 'Pieces'}. Only ${transferItem.stock} available in ${store.name}.`)
+      return
+    }
+
+    const destIds = validRows.map(r => r.destination_store_id)
+    if (new Set(destIds).size !== destIds.length) {
+      setTransferError('Each destination store can only be selected once per transfer.')
+      return
+    }
+
+    setTransferSubmitting(true)
+    setTransferError('')
+
+    try {
+      const payload = {
+        product_id: transferItem.product_id,
+        transfers: validRows.map(r => ({
+          destination_store_id: parseInt(r.destination_store_id),
+          quantity: parseFloat(r.quantity)
+        }))
+      }
+
+      const response = await api.post(`/stores/${store.id}/transfer`, payload)
+
+      invalidateCache('/stores')
+      invalidateCache('/orders')
+      invalidateCache(`/stores/${store.id}/inventory`)
+      invalidateCache(`/stores/${store.id}/analytics`)
+      validRows.forEach(r => {
+        invalidateCache(`/stores/${r.destination_store_id}/inventory`)
+        invalidateCache(`/stores/${r.destination_store_id}/analytics`)
+      })
+
+      await fetchStoreAndInventory()
+      await fetchAnalytics()
+
+      setShowTransferModal(false)
+      setTransferSuccessToast(response.data.message || 'Inter-store transfer completed successfully!')
+      setTimeout(() => setTransferSuccessToast(''), 6000)
+    } catch (err) {
+      console.error('Transfer failed:', err)
+      setTransferError(err.response?.data?.detail || 'Failed to complete transfer. Please try again.')
+    } finally {
+      setTransferSubmitting(false)
+    }
+  }
+
   const hasWriteAccess = user?.role === 'admin' || user?.has_write_access === true
 
   // Tab state: default to 'analytics'
@@ -1058,6 +1189,14 @@ export default function StoreDetailPage() {
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end items-center gap-2">
                             <button
+                              onClick={() => handleOpenTransfer(item)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white rounded-lg text-xs font-bold transition-all active:scale-[0.96]"
+                              title="Inter-Store Transfer"
+                            >
+                              <ArrowRightLeft size={12} />
+                              Transfer
+                            </button>
+                            <button
                               onClick={() => handleOpenAdjust(item)}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-750 text-zinc-355 hover:text-white rounded-lg text-xs font-bold transition-all active:scale-[0.96]"
                             >
@@ -1091,21 +1230,15 @@ export default function StoreDetailPage() {
             return (
               <div 
                 key={item.id}
-                className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 flex flex-col justify-between hover:border-zinc-700 hover:shadow-2xl transition-all duration-300 relative overflow-hidden group"
+                className="group relative bg-zinc-900 border border-zinc-800 hover:border-zinc-700/80 rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col justify-between"
               >
                 <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none group-hover:bg-emerald-500/10 transition-all duration-300" />
                 
                 <div>
                   {/* Top Row: Icon and stock status badge */}
                   <div className="flex items-start justify-between gap-4 mb-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border transition-transform duration-300 group-hover:scale-105
-                      ${isOut 
-                        ? 'bg-red-500/10 border-red-500/20 text-red-400' 
-                        : isLow 
-                          ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
-                          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}
-                    >
-                      <Package size={22} />
+                    <div className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-emerald-400 group-hover:scale-105 transition-transform">
+                      <Package size={20} />
                     </div>
 
                     {isOut ? (
@@ -1164,6 +1297,13 @@ export default function StoreDetailPage() {
 
                   {hasWriteAccess && (
                     <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenTransfer(item)}
+                        className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-lg transition-all active:scale-[0.93] border border-zinc-700/50 hover:border-zinc-600 flex items-center justify-center"
+                        title="Inter-Store Transfer"
+                      >
+                        <ArrowRightLeft size={15} />
+                      </button>
                       <button
                         onClick={() => handleOpenAdjust(item)}
                         className="p-2 bg-zinc-800 hover:bg-emerald-800 text-zinc-400 hover:text-white rounded-lg transition-all active:scale-[0.93] border border-zinc-700/50 hover:border-emerald-600/50 flex items-center justify-center"
@@ -1422,6 +1562,258 @@ export default function StoreDetailPage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification Banner */}
+      {transferSuccessToast && (
+        <div className="fixed top-6 right-6 z-[100] max-w-md bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 px-5 py-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-start gap-3 animate-in slide-in-from-top-4 duration-300">
+          <CheckCircle className="text-emerald-400 shrink-0 mt-0.5" size={18} />
+          <div>
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-200">Transfer Successful</h4>
+            <p className="text-xs font-semibold mt-0.5 text-emerald-300/90">{transferSuccessToast}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Inter-Store Transfer Modal */}
+      {showTransferModal && transferItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 p-4" onClick={() => setShowTransferModal(false)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-zinc-800 border border-zinc-700 text-white">
+                  <ArrowRightLeft size={18} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-extrabold text-white uppercase tracking-wider">Inter-Store Transfer</h2>
+                  <p className="text-[11px] text-zinc-400 font-semibold truncate max-w-xs">
+                    {transferItem.product_name}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowTransferModal(false)}
+                className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-zinc-800 transition-all"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmTransfer} className="p-6 space-y-4">
+              {/* Product & Source Store Info Summary */}
+              <div className="p-3.5 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-400 font-semibold flex items-center gap-1.5">
+                    <Building2 size={14} className="text-zinc-500" /> Source Store:
+                  </span>
+                  <span className="font-bold text-white uppercase tracking-wide">{store?.name}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-1.5 border-t border-zinc-900">
+                  <span className="text-zinc-400 font-semibold flex items-center gap-1.5">
+                    <Package size={14} className="text-zinc-500" /> Current Available Stock:
+                  </span>
+                  <span className="font-extrabold text-emerald-400 text-sm">
+                    {transferItem.stock} {transferItem.default_unit || 'Pieces'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Error Banner */}
+              {transferError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0" />
+                  <span>{transferError}</span>
+                </div>
+              )}
+
+              {/* Destination Rows Header */}
+              <div className="flex items-center justify-between pt-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  Transfer Destinations
+                </label>
+                <span className="text-[10px] text-zinc-500 font-semibold">
+                  Unit: {transferItem.default_unit || 'Pieces'}
+                </span>
+              </div>
+
+              {/* Destination Rows List */}
+              <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                {transferRows.map((row, idx) => {
+                  const selectedStore = allStores.find(s => s.id === parseInt(row.destination_store_id))
+                  const currentDestStock = row.destination_store_id 
+                    ? (destInventories[row.destination_store_id]?.find(i => i.product_id === transferItem.product_id)?.stock || 0)
+                    : 0
+                  const transferQty = parseFloat(row.quantity) || 0
+                  const unit = transferItem.default_unit || 'Pieces'
+                  const availableStock = transferItem.stock || 0
+                  const otherRowsTotal = transferRows
+                    .filter((_, i) => i !== idx)
+                    .reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0)
+                  const maxAllowed = Math.max(0, availableStock - otherRowsTotal)
+
+                  return (
+                    <div key={idx} className="p-3 bg-zinc-950/60 border border-zinc-800/80 rounded-xl space-y-2.5 relative group">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-200">
+                          Destination #{idx + 1}
+                        </span>
+                        {transferRows.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTransferRow(idx)}
+                            className="text-zinc-500 hover:text-red-400 p-1 hover:bg-zinc-800 rounded transition-colors"
+                            title="Remove Destination"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <select
+                            required
+                            value={row.destination_store_id}
+                            onChange={(e) => handleUpdateTransferRow(idx, 'destination_store_id', e.target.value)}
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 focus:border-zinc-600 rounded-lg text-white text-xs font-semibold transition-colors focus:outline-none cursor-pointer"
+                          >
+                            <option value="">-- Select Store --</option>
+                            {allStores
+                              .filter(s => s.id !== store?.id)
+                              .map(s => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name} ({s.city})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0.01"
+                            max={maxAllowed}
+                            required
+                            placeholder={`Max ${maxAllowed}...`}
+                            value={row.quantity}
+                            onChange={(e) => handleUpdateTransferRow(idx, 'quantity', e.target.value)}
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 focus:border-zinc-600 text-white placeholder-zinc-600 rounded-lg text-xs font-semibold transition-colors focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Live Stock info for Destination Store */}
+                      {row.destination_store_id && selectedStore && (
+                        <div className="pt-2 border-t border-zinc-900 flex items-center justify-between text-[11px] font-medium">
+                          <span className="text-zinc-400">
+                            Current in {selectedStore.name}: <strong className="text-white font-bold">{currentDestStock} {unit}</strong>
+                          </span>
+                          <span className="text-emerald-400 font-bold">
+                            Total After: {currentDestStock + transferQty} {unit}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Add Destination Button */}
+              <button
+                type="button"
+                onClick={handleAddTransferRow}
+                className="w-full py-2 bg-zinc-950 hover:bg-zinc-800 border border-dashed border-zinc-800 hover:border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm"
+              >
+                <Plus size={14} />
+                <span>Add Another Destination Store</span>
+              </button>
+
+              {/* Live Remaining Stock Summary */}
+              {(() => {
+                const totalTransferQty = transferRows.reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0)
+                const remaining = (transferItem.stock || 0) - totalTransferQty
+                const isOver = remaining < 0
+                const validRows = transferRows.filter(r => r.destination_store_id && parseFloat(r.quantity) > 0)
+                const unit = transferItem.default_unit || 'Pieces'
+
+                return (
+                  <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 text-xs">
+                    <div className="flex items-center justify-between text-zinc-400 font-medium">
+                      <span>Total Quantity to Transfer:</span>
+                      <span className="font-bold text-white">{totalTransferQty} {unit}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1.5 border-t border-zinc-900 font-semibold">
+                      <span className="text-zinc-400">Remaining in {store?.name}:</span>
+                      <span className={isOver ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
+                        {remaining} {unit}
+                      </span>
+                    </div>
+
+                    {validRows.length > 0 && (
+                      <div className="pt-2 border-t border-zinc-900 space-y-1">
+                        <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider block">
+                          Destination Stores Stock Summary
+                        </span>
+                        {validRows.map((r, i) => {
+                          const dStore = allStores.find(s => s.id === parseInt(r.destination_store_id))
+                          const currentStk = destInventories[r.destination_store_id]?.find(item => item.product_id === transferItem.product_id)?.stock || 0
+                          const addedQty = parseFloat(r.quantity) || 0
+                          return (
+                            <div key={i} className="flex items-center justify-between text-[11px]">
+                              <span className="text-zinc-400 font-medium">{dStore?.name || 'Destination'}:</span>
+                              <span className="text-emerald-400 font-bold">
+                                {currentStk} → {currentStk + addedQty} {unit}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* Action Buttons */}
+              {(() => {
+                const totalTransferQty = transferRows.reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0)
+                const remaining = (transferItem.stock || 0) - totalTransferQty
+                const isInvalid = remaining < 0 || totalTransferQty <= 0 || (transferItem.stock || 0) <= 0
+
+                return (
+                  <div className="pt-2 flex items-center justify-end gap-3 border-t border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setShowTransferModal(false)}
+                      disabled={transferSubmitting}
+                      className="px-4 py-2.5 text-xs font-bold text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 rounded-xl transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={transferSubmitting || isInvalid}
+                      className="px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 border border-emerald-500 rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/10 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {transferSubmitting ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>Transferring...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowRightLeft size={14} />
+                          <span>Confirm Transfer</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )
+              })()}
+            </form>
           </div>
         </div>
       )}

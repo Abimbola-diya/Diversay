@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
-from models import User, Store, StoreInventory, Product
-from schemas import StoreCreate, StoreUpdate, StoreResponse, StoreInventoryResponse, StoreInventoryUpdate
+from models import User, Store, StoreInventory, Product, Customer, Order, OrderLineItem, OrderStatus, AuditLog, ActionType
+from schemas import (
+    StoreCreate, StoreUpdate, StoreResponse, StoreInventoryResponse, StoreInventoryUpdate,
+    InterStoreTransferRequest, InterStoreTransferResponse
+)
 from auth import get_current_user, check_write_access
 from typing import List
+from datetime import datetime
+import uuid
 
 router = APIRouter(prefix="/stores", tags=["stores"])
 
@@ -211,6 +216,155 @@ def delete_store_inventory(
     db.delete(inv)
     db.commit()
     return None
+
+@router.post("/{source_store_id}/transfer", response_model=InterStoreTransferResponse)
+def transfer_inter_store(
+    source_store_id: int,
+    transfer_req: InterStoreTransferRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_write_access)
+):
+    """Transfer product inventory stock from a source store to one or more destination stores."""
+    source_store = db.query(Store).filter(Store.id == source_store_id, Store.is_deleted == False).first()
+    if not source_store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source store not found")
+
+    product = db.query(Product).filter(Product.id == transfer_req.product_id, Product.is_deleted == False).first()
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    if not transfer_req.transfers:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one transfer destination must be specified")
+
+    # Fetch source inventory
+    source_inv = db.query(StoreInventory).filter(
+        StoreInventory.store_id == source_store_id,
+        StoreInventory.product_id == transfer_req.product_id
+    ).first()
+
+    current_stock = source_inv.stock if source_inv else 0.0
+    total_requested_qty = sum(item.quantity for item in transfer_req.transfers)
+
+    if total_requested_qty <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transfer quantity must be greater than zero")
+
+    if current_stock < total_requested_qty:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Insufficient stock in {source_store.name}. Available: {current_stock}, requested transfer: {total_requested_qty}"
+        )
+
+    # Ensure system transfer customer exists
+    transfer_customer = db.query(Customer).filter(Customer.name == "Inter-Store Transfer", Customer.is_deleted == False).first()
+    if not transfer_customer:
+        transfer_customer = Customer(
+            name="Inter-Store Transfer",
+            address="System Inter-Store Transfer",
+            city="Internal",
+            state="Internal",
+            contact_number="N/A",
+            email="transfer@system.local",
+            created_by_id=current_user.id
+        )
+        db.add(transfer_customer)
+        db.flush()
+
+    unit_name = product.default_unit.value if hasattr(product.default_unit, 'value') else str(product.default_unit)
+    transfers_detail = []
+    
+    # 1. Deduct from source store
+    source_inv.stock -= total_requested_qty
+
+    # 2. Add to each destination store & create transfer Order for inbound/outbound analytics
+    for item in transfer_req.transfers:
+        if item.destination_store_id == source_store_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Destination store cannot be the same as the source store"
+            )
+
+        dest_store = db.query(Store).filter(Store.id == item.destination_store_id, Store.is_deleted == False).first()
+        if not dest_store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Destination store with ID {item.destination_store_id} not found"
+            )
+
+        dest_inv = db.query(StoreInventory).filter(
+            StoreInventory.store_id == item.destination_store_id,
+            StoreInventory.product_id == transfer_req.product_id
+        ).first()
+
+        if not dest_inv:
+            dest_inv = StoreInventory(
+                store_id=item.destination_store_id,
+                product_id=transfer_req.product_id,
+                stock=item.quantity,
+                reorder_level=15.0
+            )
+            db.add(dest_inv)
+        else:
+            dest_inv.stock += item.quantity
+
+        # Create Order record so this transaction registers in source (outbound) and destination (inbound) analytics
+        now_dt = datetime.utcnow()
+        order_no = f"TRF-{now_dt.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
+
+        transfer_order = Order(
+            order_number=order_no,
+            waybill_number=f"WB-{order_no}",
+            invoice_number=f"INV-{order_no}",
+            customer_id=transfer_customer.id,
+            source_store_id=source_store_id,
+            destination_store_id=item.destination_store_id,
+            dispatch_time=now_dt,
+            actual_delivery_time=now_dt,
+            order_status=OrderStatus.DELIVERED_ON_TIME,
+            created_by_id=current_user.id,
+            notes=f"Inter-store transfer of {item.quantity} {unit_name} of {product.name} from {source_store.name} to {dest_store.name}",
+            line_items=[
+                OrderLineItem(
+                    product_id=transfer_req.product_id,
+                    quantity=item.quantity,
+                    unit=product.default_unit,
+                    unit_price=product.unit_price or 0.0
+                )
+            ]
+        )
+        db.add(transfer_order)
+
+        audit = AuditLog(
+            user_id=current_user.id,
+            action=ActionType.CREATE,
+            table_name="orders",
+            record_id=0,
+            details=f"Inter-store transfer: Transferred {item.quantity} {unit_name} of {product.name} from {source_store.name} to {dest_store.name}"
+        )
+        db.add(audit)
+
+        transfers_detail.append({
+            "destination_store_id": item.destination_store_id,
+            "destination_store_name": dest_store.name,
+            "quantity_transferred": item.quantity,
+            "product_name": product.name,
+            "source_store_name": source_store.name
+        })
+
+    db.commit()
+    db.refresh(source_inv)
+
+    detail_str = ", ".join([
+        f"{t['quantity_transferred']} {unit_name} of {t['product_name']} from {t['source_store_name']} to {t['destination_store_name']}"
+        for t in transfers_detail
+    ])
+
+    return {
+        "message": f"Successfully transferred {detail_str}.",
+        "source_store_id": source_store_id,
+        "product_id": transfer_req.product_id,
+        "source_remaining_stock": source_inv.stock,
+        "transfers_detail": transfers_detail
+    }
 
 @router.get("/{store_id}/analytics")
 def get_store_analytics(

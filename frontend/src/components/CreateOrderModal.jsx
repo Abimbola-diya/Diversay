@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Plus, Trash2, Edit2, Calendar, User, Package, FileText, Truck, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react'
+import { X, Plus, Trash2, Edit2, Calendar, User, UserPlus, Package, FileText, Truck, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react'
 import api, { getWithCache, invalidateCache } from '../services/api'
 import { useNavigate } from 'react-router-dom'
+import AddCustomerModal from './AddCustomerModal'
 
 const getConversionFactor = (productName) => {
   const nameLower = (productName || '').toLowerCase();
@@ -117,6 +118,49 @@ export default function CreateOrderModal({ isOpen, onClose }) {
   const [vehicles, setVehicles] = useState([])
   const [actionItem, setActionItem] = useState(null)
   const [actionInputVal, setActionInputVal] = useState('')
+  const [quickCustomerModal, setQuickCustomerModal] = useState({ isOpen: false, orderId: null, initialName: '' })
+  const [customerToast, setCustomerToast] = useState('')
+
+  const handleOpenQuickCustomerModal = (orderId, initialName = '') => {
+    setQuickCustomerModal({
+      isOpen: true,
+      orderId,
+      initialName
+    })
+  }
+
+  const handleCustomerCreated = (newCustomer) => {
+    setCustomers(prev => {
+      const exists = prev.some(c => c.id === newCustomer.id || c.name.toLowerCase() === newCustomer.name.toLowerCase())
+      if (exists) return prev
+      return [newCustomer, ...prev]
+    })
+
+    const targetOrderId = quickCustomerModal.orderId
+    if (targetOrderId) {
+      setBatchOrders(prev => prev.map(o => {
+        if (o.id === targetOrderId) {
+          return {
+            ...o,
+            customerId: newCustomer.id ? newCustomer.id.toString() : '',
+            customerSearchQuery: newCustomer.name,
+            customerState: newCustomer.state || '',
+            customerCity: newCustomer.city || '',
+            showCustomerDropdown: false,
+            matchingCustomers: []
+          }
+        }
+        return o
+      }))
+    }
+
+    setCustomerToast(`Customer "${newCustomer.name}" added and selected!`)
+    setTimeout(() => {
+      setCustomerToast('')
+    }, 4000)
+
+    window.dispatchEvent(new Event('customer-created'))
+  }
 
   const getDepartureStoreId = (order) => {
     if (order.pipelineType === '2-node') {
@@ -950,11 +994,30 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                     <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
                       <User size={14} /> Customer Information
                     </h4>
+                    
+                    {customerToast && (
+                      <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                        <CheckCircle size={15} />
+                        <span>{customerToast}</span>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 gap-4">
                       <div className="relative customer-search-container w-full">
-                        <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                          Customer <span className="text-red-500">*</span>
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-semibold text-zinc-400">
+                            Customer <span className="text-red-500">*</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuickCustomerModal(order.id, order.customerSearchQuery)}
+                            className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/25 transition-all shadow-sm group"
+                            title="Add New Customer"
+                          >
+                            <UserPlus size={13} className="transition-transform group-hover:scale-110" />
+                            <span>Quick Add</span>
+                          </button>
+                        </div>
                         <input
                           type="text"
                           placeholder="Type customer name..."
@@ -967,22 +1030,38 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                           className="w-full px-4 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors text-sm"
                         />
                         
-                        {order.showCustomerDropdown && order.matchingCustomers.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950/75 border border-zinc-800/80 rounded-xl shadow-xl z-50 overflow-hidden backdrop-blur-md">
-                            <ul className="divide-y divide-zinc-900/50">
-                              {order.matchingCustomers.map((c) => (
-                                <li key={c.id}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSelectCustomer(order.id, c)}
-                                    className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
-                                  >
-                                    <span className="font-medium text-zinc-100">{c.name}</span>
-                                    {c.state && <span className="text-xs text-zinc-400 font-semibold px-2 py-0.5 bg-zinc-800 rounded">{c.state}</span>}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
+                        {order.showCustomerDropdown && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950/90 border border-zinc-800/80 rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-md">
+                            {order.matchingCustomers.length > 0 && (
+                              <ul className="divide-y divide-zinc-900/50 max-h-52 overflow-y-auto custom-product-dropdown-scroll">
+                                {order.matchingCustomers.map((c) => (
+                                  <li key={c.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSelectCustomer(order.id, c)}
+                                      className="w-full px-4 py-2.5 text-left text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors flex justify-between items-center"
+                                    >
+                                      <span className="font-medium text-zinc-100">{c.name}</span>
+                                      {c.state && <span className="text-xs text-zinc-400 font-semibold px-2 py-0.5 bg-zinc-800 rounded">{c.state}</span>}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            <div className="p-1.5 bg-zinc-950/90 border-t border-zinc-800/80">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuickCustomerModal(order.id, order.customerSearchQuery)}
+                                className="w-full px-3 py-2 text-left text-xs font-semibold text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg flex items-center gap-2 transition-colors"
+                              >
+                                <UserPlus size={14} />
+                                <span>
+                                  {order.customerSearchQuery 
+                                    ? `+ Add "${order.customerSearchQuery}" as new customer` 
+                                    : '+ Add new customer'}
+                                </span>
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1873,6 +1952,14 @@ export default function CreateOrderModal({ isOpen, onClose }) {
           </div>
         </div>
       )}
+
+      {/* Quick Add Customer Modal */}
+      <AddCustomerModal
+        isOpen={quickCustomerModal.isOpen}
+        onClose={() => setQuickCustomerModal({ isOpen: false, orderId: null, initialName: '' })}
+        initialName={quickCustomerModal.initialName}
+        onCustomerCreated={handleCustomerCreated}
+      />
     </div>
     </>
   )

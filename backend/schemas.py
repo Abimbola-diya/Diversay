@@ -343,3 +343,21 @@ class AcknowledgeRequest(BaseModel):
     notification_id: str
 
 
+# ============ Inter-Store Transfer Schemas ============
+class InterStoreTransferDestination(BaseModel):
+    destination_store_id: int
+    quantity: float = Field(..., gt=0)
+
+class InterStoreTransferRequest(BaseModel):
+    product_id: int
+    transfers: List[InterStoreTransferDestination]
+
+class InterStoreTransferResponse(BaseModel):
+    message: str
+    source_store_id: int
+    product_id: int
+    source_remaining_stock: float
+    transfers_detail: List[dict]
+
+
+
