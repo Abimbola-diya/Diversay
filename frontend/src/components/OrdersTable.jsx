@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import api, { getWithCache, isCached } from '../services/api'
+import api, { getWithCache, isCached, invalidateCache, clearCache } from '../services/api'
 import { ChevronDown, ChevronLeft, ChevronRight, Filter, Search, Calendar, ArrowRight, MapPin, Trash2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Link, useLocation } from 'react-router-dom'
@@ -103,18 +103,50 @@ export default function OrdersTable() {
     }
   }, [])
 
+  const [deletingOrderIds, setDeletingOrderIds] = useState(new Set())
+  const [toastMessage, setToastMessage] = useState('')
+
   const handleDeleteOrder = async (orderId, orderNumber) => {
     if (!window.confirm(`Are you sure you want to delete order ${orderNumber}? This action cannot be undone and will restore stock inventory levels.`)) {
       return
     }
-    try {
-      await api.delete(`/orders/${orderId}`)
-      alert(`Order ${orderNumber} deleted successfully.`)
-      fetchOrders()
-    } catch (err) {
-      console.error("Failed to delete order:", err)
-      alert(err.response?.data?.detail || "Failed to delete order. Please try again.")
-    }
+
+    setDeletingOrderIds(prev => new Set(prev).add(orderId))
+
+    setTimeout(async () => {
+      try {
+        await api.delete(`/orders/${orderId}`)
+        clearCache()
+        _cached = null
+        setOrders(prev => prev.filter(o => String(o.id) !== String(orderId) && o.order_number !== String(orderId)))
+        setTotalOrders(prev => Math.max(0, prev - 1))
+        setDeletingOrderIds(prev => {
+          const next = new Set(prev)
+          next.delete(orderId)
+          return next
+        })
+        setToastMessage(`Order ${orderNumber} deleted successfully.`)
+        setTimeout(() => setToastMessage(''), 5000)
+        fetchOrders()
+      } catch (err) {
+        console.error("Failed to delete order:", err)
+        setDeletingOrderIds(prev => {
+          const next = new Set(prev)
+          next.delete(orderId)
+          return next
+        })
+        if (err.response?.status === 404) {
+          clearCache()
+          _cached = null
+          setOrders(prev => prev.filter(o => String(o.id) !== String(orderId) && o.order_number !== String(orderId)))
+          setTotalOrders(prev => Math.max(0, prev - 1))
+          setToastMessage(`Order ${orderNumber} has already been deleted.`)
+          setTimeout(() => setToastMessage(''), 5000)
+        } else {
+          alert(err.response?.data?.detail || "Failed to delete order. Please try again.")
+        }
+      }
+    }, 450)
   }
 
   const fetchOrders = async () => {
@@ -681,7 +713,11 @@ export default function OrdersTable() {
               return (
                 <div
                   key={order.id}
-                  className="sticky w-full h-[410px] bg-zinc-900 text-zinc-100 rounded-3xl flex hover:shadow-2xl hover:shadow-zinc-950/50 hover:border-zinc-700 hover:z-50 transition-all duration-300 font-sans border border-zinc-800 select-none"
+                  className={`sticky w-full h-[410px] bg-zinc-900 text-zinc-100 rounded-3xl flex hover:shadow-2xl hover:shadow-zinc-950/50 hover:border-zinc-700 hover:z-50 transition-all duration-500 ease-out font-sans border border-zinc-800 select-none ${
+                    (deletingOrderIds.has(order.id) || deletingOrderIds.has(order.order_number))
+                      ? '-translate-x-[150%] opacity-0 pointer-events-none scale-95'
+                      : ''
+                  }`}
                   style={{
                     top: `${120 + Math.min(index, 5) * 16}px`,
                     zIndex: index + 10

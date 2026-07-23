@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import api, { getWithCache, isCached } from '../services/api'
+import api, { getWithCache, isCached, invalidateCache, clearCache } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 
 const getConversionFactor = (productName) => {
@@ -88,6 +88,7 @@ export default function OrderDetailPage() {
   const [auditLogs, setAuditLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [showAccessGateway, setShowAccessGateway] = useState(false)
   const { hasWriteAccess } = useAuth()
 
@@ -777,17 +778,22 @@ export default function OrderDetailPage() {
     if (!window.confirm("Are you sure you want to delete this order? This action cannot be undone and will restore stock inventory levels.")) {
       return
     }
-    setLoading(true)
-    try {
-      setError(null)
-      await api.delete(`/orders/${id}`)
-      alert("Order deleted successfully.")
-      navigate("/orders")
-    } catch (err) {
-      console.error("Failed to delete order:", err)
-      setError(err.response?.data?.detail || "Failed to delete order. Please try again.")
-      setLoading(false)
-    }
+    setIsDeleting(true)
+    setTimeout(async () => {
+      setLoading(true)
+      try {
+        setError(null)
+        await api.delete(`/orders/${id}`)
+        clearCache()
+        alert("Order deleted successfully.")
+        navigate("/orders")
+      } catch (err) {
+        console.error("Failed to delete order:", err)
+        setIsDeleting(false)
+        setError(err.response?.data?.detail || "Failed to delete order. Please try again.")
+        setLoading(false)
+      }
+    }, 450)
   }
 
   if (loading) {
@@ -818,7 +824,7 @@ export default function OrderDetailPage() {
 
   return (
     <>
-    <div className={`animate-in fade-in duration-300 max-w-7xl mx-auto ${isEditing ? 'pb-32' : 'pb-12'}`}>
+    <div className={`transition-all duration-500 ease-out max-w-7xl mx-auto ${isEditing ? 'pb-32' : 'pb-12'} ${isDeleting ? '-translate-x-[150%] opacity-0 scale-95 pointer-events-none' : 'animate-in fade-in duration-300'}`}>
       {/* Navigation & Actions Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
@@ -1032,11 +1038,13 @@ export default function OrderDetailPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Destination Address</span>
-                <span className="text-xs text-white font-bold block mt-0.5 truncate" title={displayOrder.customer_address}>
-                  {displayOrder.customer_address || "No Address Registry"}
+                <span className="text-xs text-white font-bold block mt-0.5 truncate" title={displayOrder.destination_store_name || displayOrder.customer_address || "No Address Registry"}>
+                  {displayOrder.destination_store_name || displayOrder.customer_address || "No Address Registry"}
                 </span>
                 <span className="text-[10px] text-zinc-400 block mt-0.5 truncate">
-                  {displayOrder.customer_state ? `${displayOrder.customer_state} State, Nigeria` : "Customer Direct"}
+                  {displayOrder.destination_store_name 
+                    ? (displayOrder.destination_store_address || (displayOrder.destination_store_city ? `${displayOrder.destination_store_city}, ${displayOrder.destination_store_state || ''}` : `${displayOrder.destination_store_state || ''} State, Nigeria`))
+                    : (displayOrder.customer_state ? `${displayOrder.customer_state} State, Nigeria` : "Customer Direct")}
                 </span>
               </div>
             </div>

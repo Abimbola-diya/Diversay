@@ -216,6 +216,9 @@ class OrderResponse(BaseModel):
     destination_store_id: Optional[int] = None
     source_store_name: Optional[str] = None
     destination_store_name: Optional[str] = None
+    destination_store_city: Optional[str] = None
+    destination_store_state: Optional[str] = None
+    destination_store_address: Optional[str] = None
     source_store_is_central: Optional[bool] = False
     destination_store_is_central: Optional[bool] = False
     dispatch_time: Optional[datetime]
@@ -337,6 +340,7 @@ class StoreInventoryResponse(BaseModel):
 class StoreInventoryUpdate(BaseModel):
     stock: Optional[float] = None
     reorder_level: Optional[float] = None
+    product_name: Optional[str] = None
 
 
 class AcknowledgeRequest(BaseModel):

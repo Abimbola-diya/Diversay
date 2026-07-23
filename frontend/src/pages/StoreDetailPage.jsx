@@ -53,6 +53,7 @@ import {
 import { TrendingUp, BarChart3, PieChart as PieIcon, ArrowRightLeft } from 'lucide-react'
 import { 
   ArrowLeft, 
+  ArrowRight,
   MapPin, 
   Phone, 
   User, 
@@ -74,6 +75,23 @@ import {
   Loader2,
   Trash2
 } from 'lucide-react'
+
+const formatDateWithTime = (dateStr) => {
+  if (!dateStr) return 'N/A'
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr
+    return d.toLocaleString('en-NG', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch (e) {
+    return dateStr
+  }
+}
 
 const formatChartDate = (val, range) => {
   if (!val || typeof val !== 'string') return '';
@@ -153,6 +171,7 @@ export default function StoreDetailPage() {
   const [viewUnit, setViewUnit] = useState('Pieces')
   
   const [adjustItem, setAdjustItem] = useState(null)
+  const [adjustProductName, setAdjustProductName] = useState('')
   const [adjustValue, setAdjustValue] = useState('')
   const [adjustReorderLevel, setAdjustReorderLevel] = useState('')
   const [updating, setUpdating] = useState(false)
@@ -179,6 +198,9 @@ export default function StoreDetailPage() {
   const [transferSubmitting, setTransferSubmitting] = useState(false)
   const [transferError, setTransferError] = useState('')
   const [transferSuccessToast, setTransferSuccessToast] = useState('')
+  const [transfersModalType, setTransfersModalType] = useState(null) // 'inbound' | 'outbound' | null
+  const [transfersModalSearch, setTransfersModalSearch] = useState('')
+  const [deletingProductIds, setDeletingProductIds] = useState(new Set())
 
   const handleOpenTransfer = async (item) => {
     setTransferItem(item)
@@ -278,6 +300,12 @@ export default function StoreDetailPage() {
 
       const response = await api.post(`/stores/${store.id}/transfer`, payload)
 
+      // Instantly close modal and display detailed success message!
+      setShowTransferModal(false)
+      setTransferSuccessToast(response.data.message || 'Inter-store transfer completed successfully!')
+      setTimeout(() => setTransferSuccessToast(''), 7000)
+
+      // Background cache invalidation and UI state refreshes
       invalidateCache('/stores')
       invalidateCache('/orders')
       invalidateCache(`/stores/${store.id}/inventory`)
@@ -287,12 +315,8 @@ export default function StoreDetailPage() {
         invalidateCache(`/stores/${r.destination_store_id}/analytics`)
       })
 
-      await fetchStoreAndInventory()
-      await fetchAnalytics()
-
-      setShowTransferModal(false)
-      setTransferSuccessToast(response.data.message || 'Inter-store transfer completed successfully!')
-      setTimeout(() => setTransferSuccessToast(''), 6000)
+      fetchStoreAndInventory()
+      fetchAnalytics()
     } catch (err) {
       console.error('Transfer failed:', err)
       setTransferError(err.response?.data?.detail || 'Failed to complete transfer. Please try again.')
@@ -432,9 +456,10 @@ export default function StoreDetailPage() {
     return { totalSKUs, totalStock, lowStockCount, outOfStockCount }
   }, [inventory])
 
-  // Adjust stock
+  // Adjust stock & details
   const handleOpenAdjust = (item) => {
     setAdjustItem(item)
+    setAdjustProductName(item.product_name || '')
     setAdjustValue(item.stock.toString())
     setAdjustReorderLevel((item.reorder_level ?? 15.0).toString())
     setError('')
@@ -444,6 +469,12 @@ export default function StoreDetailPage() {
     e.preventDefault()
     const val = parseFloat(adjustValue)
     const reorderVal = parseFloat(adjustReorderLevel)
+    const newName = adjustProductName.trim()
+
+    if (!newName) {
+      setError('Product name cannot be empty')
+      return
+    }
     if (isNaN(val) || val < 0) {
       setError('Please enter a valid stock level >= 0')
       return
@@ -453,28 +484,35 @@ export default function StoreDetailPage() {
       return
     }
 
+    const currentItem = adjustItem
+    setAdjustItem(null)
+
+    // Instant local UI update
+    setInventory(prev => prev.map(item => 
+      item.product_id === currentItem.product_id 
+        ? { ...item, product_name: newName, stock: val, reorder_level: reorderVal } 
+        : item
+    ))
+
+    // Instant success toast feedback
+    setTransferSuccessToast(`Successfully updated details for ${newName}.`)
+    setTimeout(() => setTransferSuccessToast(''), 6000)
+
+    // Execute single atomic API request and cache invalidation in background
     try {
-      setUpdating(true)
-      setError('')
-      await api.put(`/stores/${id}/inventory/${adjustItem.product_id}`, { 
+      await api.put(`/stores/${id}/inventory/${currentItem.product_id}`, { 
         stock: val,
-        reorder_level: reorderVal
+        reorder_level: reorderVal,
+        product_name: newName
       })
+
+      invalidateCache('/products')
+      invalidateCache('/stores')
       invalidateCache(`/stores/${id}/inventory`)
       invalidateCache(`/stores/${id}/analytics`)
       fetchAnalytics()
-      
-      // Update local state directly
-      setInventory(prev => prev.map(item => 
-        item.product_id === adjustItem.product_id 
-          ? { ...item, stock: val, reorder_level: reorderVal } 
-          : item
-      ))
-      setAdjustItem(null)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update stock level.')
-    } finally {
-      setUpdating(false)
+      console.error("Failed to persist adjustment:", err)
     }
   }
 
@@ -483,20 +521,38 @@ export default function StoreDetailPage() {
       return
     }
 
-    try {
-      setUpdating(true)
-      await api.delete(`/stores/${id}/inventory/${product.product_id}`)
-      invalidateCache(`/stores/${id}/inventory`)
-      invalidateCache(`/stores/${id}/analytics`)
-      fetchAnalytics()
-      
-      // Update local state directly
-      setInventory(prev => prev.filter(item => item.product_id !== product.product_id))
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to delete product from store.')
-    } finally {
-      setUpdating(false)
-    }
+    setDeletingProductIds(prev => new Set(prev).add(product.product_id))
+
+    setTimeout(async () => {
+      try {
+        await api.delete(`/stores/${id}/inventory/${product.product_id}`)
+        invalidateCache('/stores')
+        invalidateCache('/products')
+        invalidateCache(`/stores/${id}/inventory`)
+        invalidateCache(`/stores/${id}/analytics`)
+        
+        // Remove from local inventory state
+        setInventory(prev => prev.filter(item => item.product_id !== product.product_id))
+        setDeletingProductIds(prev => {
+          const next = new Set(prev)
+          next.delete(product.product_id)
+          return next
+        })
+
+        setTransferSuccessToast(`${product.product_name} has been successfully deleted from ${store?.name || 'store'} inventory registry.`)
+        setTimeout(() => setTransferSuccessToast(''), 5000)
+
+        fetchAnalytics()
+      } catch (err) {
+        console.error("Failed to delete product from store:", err)
+        setDeletingProductIds(prev => {
+          const next = new Set(prev)
+          next.delete(product.product_id)
+          return next
+        })
+        alert(err.response?.data?.detail || 'Failed to delete product from store.')
+      }
+    }, 450)
   }
 
   const handleOpenAddModal = async () => {
@@ -741,25 +797,45 @@ export default function StoreDetailPage() {
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Analytics Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-700 transition-colors">
+              <div
+                onClick={() => {
+                  setTransfersModalSearch('')
+                  setTransfersModalType('inbound')
+                }}
+                className="bg-zinc-900 border border-zinc-800/80 hover:border-emerald-500/50 rounded-2xl p-5 cursor-pointer hover:bg-zinc-850 active:scale-[0.98] transition-all group"
+                title="Click to view detailed inbound transfers"
+              >
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Total Inbound Transfers</p>
-                    <p className="text-2xl font-black text-white mt-1">{analytics.total_incoming}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold group-hover:text-emerald-400 transition-colors">Total Inbound Transfers</p>
+                    <p className="text-2xl font-black text-white mt-1 flex items-center gap-2">
+                      {analytics.total_incoming}
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">View List →</span>
+                    </p>
                   </div>
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
                     <ArrowRightLeft size={14} />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-5 hover:border-zinc-700 transition-colors">
+              <div
+                onClick={() => {
+                  setTransfersModalSearch('')
+                  setTransfersModalType('outbound')
+                }}
+                className="bg-zinc-900 border border-zinc-800/80 hover:border-zinc-500/50 rounded-2xl p-5 cursor-pointer hover:bg-zinc-850 active:scale-[0.98] transition-all group"
+                title="Click to view detailed outbound transfers"
+              >
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-550 font-bold">Total Outbound Transfers</p>
-                    <p className="text-2xl font-black text-white mt-1">{analytics.total_outgoing}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold group-hover:text-white transition-colors">Total Outbound Transfers</p>
+                    <p className="text-2xl font-black text-white mt-1 flex items-center gap-2">
+                      {analytics.total_outgoing}
+                      <span className="text-[10px] font-bold text-zinc-300 bg-zinc-800 px-2 py-0.5 rounded-full border border-zinc-700">View List →</span>
+                    </p>
                   </div>
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-white group-hover:scale-110 transition-transform">
                     <ArrowRightLeft size={14} className="rotate-180" />
                   </div>
                 </div>
@@ -1116,11 +1192,14 @@ export default function StoreDetailPage() {
                 {filteredInventory.map((item) => {
                   const isOut = item.stock === 0
                   const isLow = item.stock > 0 && item.stock <= (item.reorder_level ?? 15.0)
+                  const isDeletingProduct = deletingProductIds.has(item.product_id)
                   
                   return (
                     <tr 
                       key={item.id} 
-                      className="hover:bg-zinc-800/20 transition-colors group"
+                      className={`hover:bg-zinc-800/20 transition-all duration-500 ease-in-out group ${
+                        isDeletingProduct ? 'translate-x-[120%] opacity-0 scale-95 pointer-events-none bg-red-950/20' : 'opacity-100 scale-100'
+                      }`}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -1226,11 +1305,14 @@ export default function StoreDetailPage() {
           {filteredInventory.map((item) => {
             const isOut = item.stock === 0
             const isLow = item.stock > 0 && item.stock <= (item.reorder_level ?? 15.0)
+            const isDeletingProduct = deletingProductIds.has(item.product_id)
             
             return (
               <div 
                 key={item.id}
-                className="group relative bg-zinc-900 border border-zinc-800 hover:border-zinc-700/80 rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-300 flex flex-col justify-between"
+                className={`group relative bg-zinc-900 border border-zinc-800 hover:border-zinc-700/80 rounded-2xl p-5 shadow-lg hover:shadow-2xl transition-all duration-500 ease-in-out flex flex-col justify-between ${
+                  isDeletingProduct ? 'translate-x-[120%] opacity-0 scale-90 pointer-events-none' : 'opacity-100 scale-100'
+                }`}
               >
                 <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none group-hover:bg-emerald-500/10 transition-all duration-300" />
                 
@@ -1353,7 +1435,22 @@ export default function StoreDetailPage() {
 
             <form onSubmit={handleSaveAdjust} className="space-y-4">
               <div>
-                <label className="block text-[11px] uppercase tracking-wider text-zinc-550 font-bold mb-1.5">
+                <label className="block text-[11px] uppercase tracking-wider text-zinc-400 font-bold mb-1.5">
+                  Product Name
+                </label>
+                <input
+                  type="text"
+                  value={adjustProductName}
+                  onChange={(e) => setAdjustProductName(e.target.value)}
+                  placeholder="Enter product name..."
+                  className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-zinc-400 font-bold mb-1.5">
                   Current Stock Level ({adjustItem.default_unit}s)
                 </label>
                 <input
@@ -1363,7 +1460,6 @@ export default function StoreDetailPage() {
                   onChange={(e) => setAdjustValue(e.target.value)}
                   placeholder="0"
                   className="w-full bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-emerald-500 text-white rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus:outline-none"
-                  autoFocus
                 />
               </div>
 
@@ -1814,6 +1910,174 @@ export default function StoreDetailPage() {
                 )
               })()}
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Transfers List Modal */}
+      {transfersModalType && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 p-4"
+          onClick={() => setTransfersModalType(null)}
+        >
+          <div
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/80">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl border ${transfersModalType === 'inbound' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-white'}`}>
+                  <ArrowRightLeft size={18} className={transfersModalType === 'outbound' ? 'rotate-180' : ''} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-extrabold text-white uppercase tracking-wider">
+                    {transfersModalType === 'inbound' ? 'Inbound Transfers Registry' : 'Outbound Transfers Registry'}
+                  </h2>
+                  <p className="text-[11px] text-zinc-400 font-semibold">
+                    Store: <span className="text-white font-bold">{store?.name}</span> ({transfersModalType === 'inbound' ? 'Received stock' : 'Sent stock'})
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setTransfersModalType(null)}
+                className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-zinc-800 transition-all"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Filter / Search Bar */}
+            {(() => {
+              const rawList = transfersModalType === 'inbound' 
+                ? (analytics?.incoming_transactions || [])
+                : (analytics?.outgoing_transactions || [])
+              
+              const filteredList = rawList.filter(tx => {
+                if (!transfersModalSearch.trim()) return true
+                const query = transfersModalSearch.toLowerCase()
+                const matchOrder = tx.order_number?.toLowerCase().includes(query)
+                const matchFrom = tx.source_store_name?.toLowerCase().includes(query)
+                const matchTo = (tx.destination_store_name || tx.customer_name)?.toLowerCase().includes(query)
+                const matchItems = tx.line_items?.some(i => i.product_name?.toLowerCase().includes(query))
+                return matchOrder || matchFrom || matchTo || matchItems
+              })
+
+              return (
+                <>
+                  <div className="p-4 bg-zinc-950/40 border-b border-zinc-800/80 flex items-center gap-3">
+                    <div className="relative flex-1">
+                      <Search size={15} className="absolute left-3 top-2.5 text-zinc-500" />
+                      <input
+                        type="text"
+                        placeholder="Search by store, product, or order #..."
+                        value={transfersModalSearch}
+                        onChange={(e) => setTransfersModalSearch(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 focus:border-zinc-600 rounded-xl text-white placeholder-zinc-500 text-xs font-semibold focus:outline-none transition-colors"
+                      />
+                    </div>
+                    <span className="text-xs text-zinc-400 font-bold px-2">
+                      Total: {filteredList.length}
+                    </span>
+                  </div>
+
+                  {/* Transactions List */}
+                  <div className="p-6 overflow-y-auto space-y-4 flex-1">
+                    {filteredList.length === 0 ? (
+                      <div className="py-12 text-center text-zinc-500 space-y-2">
+                        <Package size={36} className="mx-auto text-zinc-600" />
+                        <p className="text-xs font-semibold">No {transfersModalType} transfers found.</p>
+                      </div>
+                    ) : (
+                      filteredList.map((tx) => {
+                        const isInterStore = Boolean(tx.destination_store_name || (tx.source_store_name && tx.source_store_id !== store?.id))
+                        const fromStore = tx.source_store_name || 'Agege Store'
+                        const toStore = tx.destination_store_name || tx.customer_name || 'Customer Direct'
+
+                        return (
+                          <div
+                            key={tx.id}
+                            className="p-4 bg-zinc-950/80 border border-zinc-800 hover:border-zinc-700/80 rounded-2xl space-y-3 shadow-md transition-all"
+                          >
+                            {/* Header */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-900 pb-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-white text-xs uppercase tracking-wide">
+                                  {tx.order_number}
+                                </span>
+                                {isInterStore ? (
+                                  <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-black text-[9px] uppercase tracking-wider rounded-lg">
+                                    Inter-Store Transfer
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-sky-500/10 border border-sky-500/20 text-sky-400 font-black text-[9px] uppercase tracking-wider rounded-lg">
+                                    Customer Order
+                                  </span>
+                                )}
+                              </div>
+
+                              <span className="text-[11px] text-zinc-400 font-semibold">
+                                {formatDateWithTime(tx.dispatch_time || tx.created_at)}
+                              </span>
+                            </div>
+
+                            {/* Route: From -> To */}
+                            <div className="flex items-center gap-3 text-xs py-1">
+                              <div className="flex items-center gap-1.5 font-bold text-zinc-300">
+                                <Building2 size={13} className="text-zinc-500" />
+                                <span>FROM: <strong className="text-white">{fromStore}</strong></span>
+                              </div>
+                              <ArrowRight size={14} className="text-emerald-500 shrink-0" />
+                              <div className="flex items-center gap-1.5 font-bold text-zinc-300">
+                                <Building2 size={13} className="text-zinc-500" />
+                                <span>TO: <strong className="text-emerald-400">{toStore}</strong></span>
+                              </div>
+                            </div>
+
+                            {/* Line Items List */}
+                            {tx.line_items && tx.line_items.length > 0 && (
+                              <div className="pt-2 border-t border-zinc-900/80 space-y-1.5">
+                                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
+                                  Transferred Items
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {tx.line_items.map((item, idx) => (
+                                    <div key={idx} className="p-2 bg-zinc-900 border border-zinc-800/80 rounded-xl flex items-center justify-between text-xs">
+                                      <div className="min-w-0 pr-2">
+                                        <span className="font-extrabold text-white block truncate">{item.product_name}</span>
+                                        <span className="text-[10px] text-zinc-400 font-semibold">{item.brand || 'DSL'}</span>
+                                      </div>
+                                      <span className="font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg shrink-0 border border-emerald-500/20">
+                                        {item.quantity} {item.unit || 'Pieces'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Bottom Bar: Link to order details */}
+                            <div className="pt-2 border-t border-zinc-900 flex justify-end">
+                              <button
+                                onClick={() => {
+                                  setTransfersModalType(null)
+                                  navigate(`/orders/${tx.id}`)
+                                }}
+                                className="inline-flex items-center gap-1.5 text-xs font-bold text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 transition-all"
+                              >
+                                <span>View Order Manifest</span>
+                                <ArrowRight size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}

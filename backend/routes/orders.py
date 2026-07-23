@@ -535,17 +535,32 @@ def list_orders(
         "items": [get_order_with_details(order) for order in orders]
     }
 
+def fetch_order_by_id_or_number(db: Session, order_identifier: str, include_deleted: bool = False):
+    s_id = str(order_identifier).strip()
+    query = db.query(Order)
+    if not include_deleted:
+        query = query.filter(Order.is_deleted == False)
+    
+    if s_id.isdigit():
+        return query.filter((Order.id == int(s_id)) | (Order.order_number == s_id)).first()
+    else:
+        return query.filter(Order.order_number == s_id).first()
+
 @router.get("/{order_id}", response_model=OrderDetailResponse)
 def get_order_detail(
-    order_id: int,
+    order_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get order details with audit log."""
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.is_deleted == False
-    ).options(
+    s_id = str(order_id).strip()
+    query = db.query(Order).filter(Order.is_deleted == False)
+    if s_id.isdigit():
+        query = query.filter((Order.id == int(s_id)) | (Order.order_number == s_id))
+    else:
+        query = query.filter(Order.order_number == s_id)
+        
+    order = query.options(
         joinedload(Order.customer),
         joinedload(Order.created_by_user),
         joinedload(Order.line_items).joinedload(OrderLineItem.product),
@@ -564,12 +579,12 @@ def get_order_detail(
 
 @router.get("/{order_id}/audit-log", response_model=List[AuditLogResponse])
 def get_order_audit_log(
-    order_id: int,
+    order_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get audit log for an order."""
-    order = db.query(Order).filter(Order.id == order_id).first()
+    order = fetch_order_by_id_or_number(db, order_id, include_deleted=True)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -578,7 +593,7 @@ def get_order_audit_log(
     
     logs = db.query(AuditLog).filter(
         AuditLog.table_name == "orders",
-        AuditLog.record_id == order_id
+        AuditLog.record_id == order.id
     ).options(
         joinedload(AuditLog.user)
     ).order_by(AuditLog.timestamp.desc()).all()
@@ -599,16 +614,13 @@ def get_order_audit_log(
 
 @router.put("/{order_id}", response_model=OrderResponse)
 def update_order(
-    order_id: int,
+    order_id: str,
     order_update: OrderUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(check_write_access)
 ):
     """Update order (admin only)."""
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.is_deleted == False
-    ).first()
+    order = fetch_order_by_id_or_number(db, order_id)
     
     if not order:
         raise HTTPException(
@@ -821,7 +833,7 @@ def update_order(
     snapshot = get_order_snapshot(order)
     
     create_audit_log(
-        db, current_user.id, ActionType.EDIT, "orders", order_id,
+        db, current_user.id, ActionType.EDIT, "orders", order.id,
         {
             "action": commit_msg,
             "commit_hash": commit_hash,
@@ -836,16 +848,13 @@ def update_order(
 
 @router.patch("/{order_id}/status", response_model=OrderResponse)
 def update_order_status_endpoint(
-    order_id: int,
+    order_id: str,
     status_update: OrderStatusUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(check_write_access)
 ):
     """Update order status manually (admin only)."""
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.is_deleted == False
-    ).first()
+    order = fetch_order_by_id_or_number(db, order_id)
     
     if not order:
         raise HTTPException(
@@ -857,7 +866,7 @@ def update_order_status_endpoint(
     order.order_status = status_update.order_status
     
     create_audit_log(
-        db, current_user.id, ActionType.STATUS_CHANGE, "orders", order_id,
+        db, current_user.id, ActionType.STATUS_CHANGE, "orders", order.id,
         {"old_status": old_status.value, "new_status": status_update.order_status.value}
     )
     
@@ -868,16 +877,13 @@ def update_order_status_endpoint(
 
 @router.patch("/{order_id}/mark-delivered", response_model=OrderResponse)
 def mark_order_delivered(
-    order_id: int,
+    order_id: str,
     delivered_request: MarkDeliveredRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(check_write_access)
 ):
     """Mark order as delivered (admin only)."""
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.is_deleted == False
-    ).first()
+    order = fetch_order_by_id_or_number(db, order_id)
     
     if not order:
         raise HTTPException(
@@ -889,7 +895,7 @@ def mark_order_delivered(
     update_order_status(order)
     
     create_audit_log(
-        db, current_user.id, ActionType.STATUS_CHANGE, "orders", order_id,
+        db, current_user.id, ActionType.STATUS_CHANGE, "orders", order.id,
         {"action": "Marked as delivered", "status": order.order_status.value}
     )
     
@@ -900,15 +906,12 @@ def mark_order_delivered(
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_order(
-    order_id: int,
+    order_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(check_write_access)
 ):
     """Soft delete order (admin only)."""
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.is_deleted == False
-    ).first()
+    order = fetch_order_by_id_or_number(db, order_id)
     
     if not order:
         raise HTTPException(
@@ -917,12 +920,16 @@ def delete_order(
         )
     
     # Revert inventory stock levels for each line item in the deleted order
-    for item in order.line_items:
+    for item in (order.line_items or []):
+        if not item or not item.product_id:
+            continue
         product = item.product
-        factor = get_conversion_factor(product.name) if (product and item.unit == UnitType.CARTON) else 1.0
-        change_qty = item.quantity * factor
+        product_name = product.name if product else ""
+        is_carton = (item.unit == UnitType.CARTON) or (str(item.unit or '').upper() == "CARTON")
+        factor = get_conversion_factor(product_name) if (product_name and is_carton) else 1.0
+        change_qty = (item.quantity or 0.0) * factor
         
-        # Revert source store debit (add it back)
+        # Revert source store debit (add it back to source store)
         if order.source_store_id:
             src_inv = db.query(StoreInventory).filter(
                 StoreInventory.store_id == order.source_store_id,
@@ -930,8 +937,15 @@ def delete_order(
             ).first()
             if src_inv:
                 src_inv.stock += change_qty
+            else:
+                src_inv = StoreInventory(
+                    store_id=order.source_store_id,
+                    product_id=item.product_id,
+                    stock=change_qty
+                )
+                db.add(src_inv)
                 
-        # Revert destination store credit (subtract it back)
+        # Revert destination store credit (subtract it back from destination store)
         if order.destination_store_id:
             dest_inv = db.query(StoreInventory).filter(
                 StoreInventory.store_id == order.destination_store_id,
@@ -939,16 +953,12 @@ def delete_order(
             ).first()
             if dest_inv:
                 dest_inv.stock -= change_qty
-                
-                source_store = db.query(Store).filter(Store.id == order.source_store_id).first()
-                if source_store and source_store.is_central:
-                    dest_inv.stock += change_qty
 
     order.is_deleted = True
     
     create_audit_log(
-        db, current_user.id, ActionType.DELETE, "orders", order_id,
-        {"action": "Order deleted"}
+        db, current_user.id, ActionType.DELETE, "orders", order.id,
+        {"action": "Order deleted", "order_number": order.order_number}
     )
     
     db.commit()

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from models import User, Store, StoreInventory, Product, Customer, Order, OrderLineItem, OrderStatus, AuditLog, ActionType
@@ -7,6 +7,7 @@ from schemas import (
     InterStoreTransferRequest, InterStoreTransferResponse
 )
 from auth import get_current_user, check_write_access
+from utils import get_order_with_details
 from typing import List
 from datetime import datetime
 import uuid
@@ -169,6 +170,8 @@ def update_store_inventory(
         )
         db.add(inv)
     else:
+        if inventory_update.product_name:
+            product.name = inventory_update.product_name.strip()
         if inventory_update.stock is not None:
             inv.stock = inventory_update.stock
         if inventory_update.reorder_level is not None:
@@ -215,7 +218,7 @@ def delete_store_inventory(
         
     db.delete(inv)
     db.commit()
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @router.post("/{source_store_id}/transfer", response_model=InterStoreTransferResponse)
 def transfer_inter_store(
@@ -495,6 +498,9 @@ def get_store_analytics(
         {"date": d, "incoming": val["incoming"], "outgoing": val["outgoing"]}
         for d, val in sorted(movement_dates.items())
     ]
+
+    incoming_transactions = [get_order_with_details(o) for o in sorted(incoming_orders, key=lambda x: x.created_at or datetime.min, reverse=True)]
+    outgoing_transactions = [get_order_with_details(o) for o in sorted(outgoing_orders, key=lambda x: x.created_at or datetime.min, reverse=True)]
     
     return {
         "total_incoming": total_incoming,
@@ -504,5 +510,7 @@ def get_store_analytics(
         "dslp_count": dslp_count,
         "dsl_stock": dsl_stock,
         "dslp_stock": dslp_stock,
-        "movement_data": movement_data
+        "movement_data": movement_data,
+        "incoming_transactions": incoming_transactions,
+        "outgoing_transactions": outgoing_transactions
     }
