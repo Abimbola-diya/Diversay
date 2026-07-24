@@ -7,12 +7,8 @@ import SplashPage from './SplashPage'
 const FULL_TEXT = "Ready to start working? sign in here"
 
 const COLORS = [
-  { textClass: 'text-teal-400',   hex: '#2dd4bf' }, // Teal
-  { textClass: 'text-purple-400', hex: '#c084fc' }, // Purple
-  { textClass: 'text-green-400',  hex: '#4ade80' }, // Green
-  { textClass: 'text-rose-400',   hex: '#f0435dff' }, // Coral
-  { textClass: 'text-amber-400',  hex: '#facc15' }, // Gold
-  { textClass: 'text-blue-400',  hex: '#68a9d7ff' }, // Blue
+  { hex: '#FE0100' },  // Diversay Red — exact brand match
+  { hex: '#CD9933' },  // Diversay Gold — exact brand match
 ]
 
 export default function LoginPage() {
@@ -29,10 +25,10 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const { login } = useAuth()
-  
+
   // Splash-screen state
-  const [showSplash,    setShowSplash]    = useState(!skipSplash)
-  const [slideLoginUp,  setSlideLoginUp]  = useState(skipSplash)
+  const [showSplash, setShowSplash] = useState(!skipSplash)
+  const [slideLoginUp, setSlideLoginUp] = useState(skipSplash)
 
   // 3 groups: 0 = "Ready to start", 1 = "working?", 2 = "sign in here"
   const GROUPS = [
@@ -117,8 +113,13 @@ export default function LoginPage() {
       return (
         <span
           key={wordIdx}
-          className={`transition-all duration-100 ${isBlue ? activeColor.textClass : 'text-white'}`}
-          style={{ fontFamily: font.family, fontStyle: font.style, fontWeight: font.weight }}
+          className="transition-all duration-100"
+          style={{
+            fontFamily: font.family,
+            fontStyle: font.style,
+            fontWeight: font.weight,
+            color: isBlue ? activeColor.hex : '#ffffff',
+          }}
         >
           {word}{!isLast && ' '}
         </span>
@@ -202,8 +203,8 @@ export default function LoginPage() {
       <div
         className="w-full max-w-xl text-center"
         style={{
-          transform:  (slideLoginUp || !showSplash) ? 'translateY(0)'   : 'translateY(60px)',
-          opacity:    (slideLoginUp || !showSplash) ? 1                 : 0,
+          transform: (slideLoginUp || !showSplash) ? 'translateY(0)' : 'translateY(60px)',
+          opacity: (slideLoginUp || !showSplash) ? 1 : 0,
           transition: 'transform 0.8s cubic-bezier(0.77,0,0.175,1), opacity 0.8s cubic-bezier(0.77,0,0.175,1)',
         }}
       >
