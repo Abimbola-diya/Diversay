@@ -221,7 +221,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
 
   const createInitialOrderObject = (defaultSourceId = '') => {
     const now = new Date()
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    const twoDaysLater = new Date(now.getTime() + 48 * 60 * 60 * 1000)
     return {
       id: Math.random().toString(36).substr(2, 9),
       customerId: '',
@@ -237,7 +237,7 @@ export default function CreateOrderModal({ isOpen, onClose }) {
       sourceStoreId: defaultSourceId,
       destinationStoreId: '',
       dispatchTime: getLocalDatetimeString(now),
-      expectedDeliveryTime: getLocalDatetimeString(tomorrow),
+      expectedDeliveryTime: getLocalDatetimeString(twoDaysLater),
       deliveryTimeError: '',
       driverName: '',
       vehicleNumber: '',
@@ -1445,9 +1445,9 @@ export default function CreateOrderModal({ isOpen, onClose }) {
                             if (val) {
                               const d = new Date(val)
                               if (!isNaN(d.getTime())) {
-                                const dayLater = new Date(d.getTime() + 24 * 60 * 60 * 1000)
-                                const offset = dayLater.getTimezoneOffset()
-                                const localDate = new Date(dayLater.getTime() - offset * 60 * 1000)
+                                const twoDaysLater = new Date(d.getTime() + 48 * 60 * 60 * 1000)
+                                const offset = twoDaysLater.getTimezoneOffset()
+                                const localDate = new Date(twoDaysLater.getTime() - offset * 60 * 1000)
                                 nextExpected = localDate.toISOString().substring(0, 16)
                               }
                             }

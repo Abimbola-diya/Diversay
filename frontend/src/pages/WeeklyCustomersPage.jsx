@@ -11,7 +11,8 @@ import {
   YAxis,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  CartesianGrid
 } from 'recharts'
 import {
   ArrowLeft,
@@ -85,9 +86,9 @@ const fuzzyMatch = (query, target) => {
 
 // Constants matching existing styling guidelines
 const STATUS_COLORS = {
-  'Delivered': '#c03030',  // Premium Rich Red
-  'InTransit': '#eedfa2',  // Premium Warm Cream
-  'Delayed': '#2d5a22'     // Premium Forest Green
+  'Delivered': '#10b981',  // Emerald Green
+  'InTransit': '#f59e0b',  // Warm Amber / Gold
+  'Delayed': '#ef4444'     // Vibrant Red
 }
 
 const PIE_COLORS = [
@@ -633,7 +634,8 @@ export default function WeeklyCustomersPage() {
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartBarData} margin={{ top: 10, right: 10, left: -20, bottom: 35 }}>
+                    <BarChart data={chartBarData} margin={{ top: 10, right: 10, left: -20, bottom: 35 }} barSize={22}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                       <XAxis
                         dataKey="name"
                         stroke="#71717a"
@@ -659,7 +661,8 @@ export default function WeeklyCustomersPage() {
                           borderColor: '#27272a',
                           borderRadius: '12px',
                           color: '#ffffff',
-                          fontSize: '11px'
+                          fontSize: '11px',
+                          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
                         }}
                         itemStyle={{ color: '#ffffff' }}
                         labelStyle={{ color: '#ffffff', fontWeight: 'bold' }}
@@ -674,7 +677,7 @@ export default function WeeklyCustomersPage() {
                       />
                       <Bar dataKey="Delivered" stackId="statusStack" fill={STATUS_COLORS.Delivered} radius={[0, 0, 0, 0]} />
                       <Bar dataKey="InTransit" stackId="statusStack" fill={STATUS_COLORS.InTransit} radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="Delayed" stackId="statusStack" fill={STATUS_COLORS.Delayed} radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="Delayed" stackId="statusStack" fill={STATUS_COLORS.Delayed} radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}

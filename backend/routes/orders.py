@@ -240,6 +240,13 @@ def create_order(
     try:
         for attempt in range(max_retries):
             order_number = generate_order_number(db)
+            expected_deliv = order_create.expected_delivery_time
+            if not expected_deliv:
+                if order_create.dispatch_time:
+                    expected_deliv = order_create.dispatch_time + timedelta(hours=48)
+                else:
+                    expected_deliv = datetime.utcnow() + timedelta(hours=48)
+
             new_order = Order(
                 order_number=order_number,
                 waybill_number=legacy_waybill,
@@ -248,7 +255,7 @@ def create_order(
                 source_store_id=order_create.source_store_id,
                 destination_store_id=order_create.destination_store_id,
                 dispatch_time=order_create.dispatch_time,
-                expected_delivery_time=order_create.expected_delivery_time,
+                expected_delivery_time=expected_deliv,
                 notes=order_create.notes,
                 driver_name=order_create.driver_name,
                 vehicle_number=order_create.vehicle_number,

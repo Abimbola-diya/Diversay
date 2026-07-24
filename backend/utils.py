@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from models import Order, OrderStatus
 from sqlalchemy.orm import Session
 from difflib import SequenceMatcher
@@ -16,10 +16,19 @@ def to_naive(dt: datetime) -> datetime:
     return dt
 
 def calculate_order_status(order: Order) -> OrderStatus:
-    """Calculate order status based on timestamps and delivery status."""
+    """Calculate order status based on timestamps and delivery status.
+    Defaults expected_delivery_time to dispatch_time + 48 hours if omitted.
+    """
     actual = to_naive(order.actual_delivery_time)
     expected = to_naive(order.expected_delivery_time)
     dispatch = to_naive(order.dispatch_time)
+    created = to_naive(order.created_at) if hasattr(order, 'created_at') else None
+
+    if expected is None:
+        if dispatch:
+            expected = dispatch + timedelta(hours=48)
+        elif created:
+            expected = created + timedelta(hours=48)
     
     if actual:
         if expected is None:

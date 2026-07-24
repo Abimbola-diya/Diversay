@@ -1117,7 +1117,19 @@ export default function OrderDetailPage() {
                   <input
                     type="datetime-local"
                     value={editDispatchTime}
-                    onChange={(e) => setEditDispatchTime(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setEditDispatchTime(val)
+                      if (val) {
+                        const d = new Date(val)
+                        if (!isNaN(d.getTime())) {
+                          const twoDaysLater = new Date(d.getTime() + 48 * 60 * 60 * 1000)
+                          const offset = twoDaysLater.getTimezoneOffset()
+                          const localDate = new Date(twoDaysLater.getTime() - offset * 60 * 1000)
+                          setEditExpectedDelivery(localDate.toISOString().substring(0, 16))
+                        }
+                      }
+                    }}
                     className="w-full px-4 py-2 bg-zinc-950/60 border border-zinc-800 rounded-xl text-zinc-100 focus:outline-none focus:border-zinc-700 transition-colors text-sm"
                   />
                 </div>
